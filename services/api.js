@@ -1,10 +1,11 @@
 import axios from 'axios';
 
 // Replace with your actual backend URL
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000'; // Uses .env or defaults to localhost
+// 🌐 Dynamic Backend URL (Expo Environment Variable)
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.5:5000'; // Fallback to local IP for physical devices
 
 const api = axios.create({
-  baseURL: BASE_URL,
+  baseURL: API_URL,
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',

@@ -6,7 +6,11 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const COOKIES_PATH = path.join(__dirname, 'instagram_cookies.txt');
+const COOKIES_LOCAL = path.join(__dirname, 'instagram_cookies.txt');
+const COOKIES_RENDER = '/etc/secrets/instagram_cookies.txt';
+
+// 🍪 Priority: Render Secret File > Local File
+const COOKIES_PATH = fs.existsSync(COOKIES_RENDER) ? COOKIES_RENDER : COOKIES_LOCAL;
 
 app.use(cors());
 app.use(express.json());
