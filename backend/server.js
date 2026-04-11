@@ -12,9 +12,9 @@ const COOKIES_RENDER = '/etc/secrets/instagram_cookies.txt';
 // 🍪 Priority: Render Secret File > Local File
 const COOKIES_PATH = fs.existsSync(COOKIES_RENDER) ? COOKIES_RENDER : COOKIES_LOCAL;
 
+app.use(cors());
 app.use(express.json());
 
-// 💓 Heartbeat Route - Verify Server Status
 app.get('/', (req, res) => {
   res.json({
     status: 'ONLINE',
