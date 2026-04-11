@@ -15,6 +15,10 @@ const COOKIES_PATH = fs.existsSync(COOKIES_RENDER) ? COOKIES_RENDER : COOKIES_LO
 app.use(cors());
 app.use(express.json());
 
+app.get('/',(req,res)=>{
+  res.json({message:"Reelvault Backend is running"});
+})
+
 // 1. Download Reel Endpoint (Powered by yt-dlp)
 app.post('/download', async (req, res) => {
   const { reelUrl } = req.body;

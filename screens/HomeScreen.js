@@ -42,10 +42,14 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <ImageBackground 
-      source={require('../assets/background.png')} 
+      source={require('../assets/vault_bg.png')} 
       style={styles.container}
       resizeMode="cover"
     >
+      <LinearGradient 
+        colors={['rgba(10,10,11,0.8)', 'transparent', '#0A0A0B']} 
+        style={StyleSheet.absoluteFill}
+      />
       {/* Navbar */}
       <View style={[styles.navbar, { justifyContent: 'center' }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>

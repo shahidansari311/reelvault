@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
+import { 
+  StyleSheet, 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  ScrollView, 
   Image,
   Dimensions,
   Alert,
-  ImageBackground,
   Modal,
+  ImageBackground
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Video } from 'expo-av';
 import { useIsFocused } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
@@ -22,7 +23,9 @@ import {
   Download, 
   Play, 
   History, 
-  Lock, 
+  TrendingUp,
+  Eye,
+  CheckCircle2
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 import { fetchStories } from '../services/api';
@@ -93,10 +96,14 @@ export default function StoryViewerScreen({ navigation }) {
 
   return (
     <ImageBackground 
-      source={require('../assets/background.png')} 
+      source={require('../assets/vault_bg.png')} 
       style={styles.container}
       resizeMode="cover"
     >
+      <LinearGradient 
+        colors={['rgba(10,10,11,0.8)', 'transparent', '#0A0A0B']} 
+        style={StyleSheet.absoluteFill}
+      />
       {/* Navbar */}
       <View style={styles.navbar}>
         <TouchableOpacity 
@@ -151,7 +158,6 @@ export default function StoryViewerScreen({ navigation }) {
               setUsername(text);
               setError(null);
               
-              // 🧠 Intelligent Auto-Redirection
               const cleanText = text.trim();
               if (cleanText.includes('instagram.com') || cleanText.includes('http')) {
                 if (searchType !== 'link') setSearchType('link');
@@ -173,7 +179,6 @@ export default function StoryViewerScreen({ navigation }) {
                    setUsername(cleanText);
                    setError(null);
 
-                   // 🧠 Intelligent Auto-Redirection on Paste
                    if (cleanText.includes('instagram.com') || cleanText.includes('http')) {
                      setSearchType('link');
                    } else if (cleanText.length > 0 && !cleanText.includes('/') && !cleanText.includes(' ')) {
@@ -211,7 +216,6 @@ export default function StoryViewerScreen({ navigation }) {
           </Text>
         </View>
 
-        {/* Results Grid */}
         <View style={styles.storyGrid}>
           {stories.map((item, index) => (
             <TouchableOpacity 
@@ -220,33 +224,29 @@ export default function StoryViewerScreen({ navigation }) {
               onPress={() => setSelectedStory(item)}
             >
               <Image source={{ uri: item.thumbnail || item.url }} style={styles.storyThumb} />
-              {item.type === 'video' && (
-                <View style={styles.typeBadge}>
-                  <Text style={styles.typeText}>VIDEO</Text>
-                </View>
-              )}
-              <View style={styles.playOverlay}>
-                <Play color="#FFF" size={24} fill="rgba(255,255,255,0.4)" />
+              <View style={styles.playBadge}>
+                {item.type === 'video' ? <Play color="#FFF" size={14} /> : <Eye color="#FFF" size={14} />}
               </View>
             </TouchableOpacity>
           ))}
+          
+          {stories.length === 0 && !loading && (
+            <View style={styles.emptyContainer}>
+              <TrendingUp color={COLORS.textSecondary} size={40} style={{ opacity: 0.3 }} />
+              <Text style={styles.emptyText}>History remains silent. Start your first extraction.</Text>
+            </View>
+          )}
         </View>
       </ScrollView>
 
-      {/* Cinematic Story Player Modal */}
       <Modal
         visible={!!selectedStory}
         transparent={true}
         animationType="fade"
         onRequestClose={() => setSelectedStory(null)}
       >
-        <View style={styles.modalBackdrop}>
-          <TouchableOpacity 
-            style={styles.closeArea} 
-            onPress={() => setSelectedStory(null)} 
-          />
-          
-          <View style={styles.playerContainer}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
             {selectedStory?.type === 'video' ? (
               <Video
                 source={{ uri: selectedStory.url }}
@@ -266,7 +266,6 @@ export default function StoryViewerScreen({ navigation }) {
               />
             )}
 
-            {/* Modal Controls */}
             <View style={styles.modalControls}>
               <TouchableOpacity 
                 style={styles.modalCloseBtn}

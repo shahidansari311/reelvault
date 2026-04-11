@@ -14,6 +14,7 @@ import {
   ScrollView,
   ImageBackground,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Video, ResizeMode } from 'expo-av';
@@ -143,10 +144,14 @@ export default function ReelDownloaderScreen({ navigation, route }) {
 
   return (
     <ImageBackground 
-      source={require('../assets/background.png')} 
+      source={require('../assets/vault_bg.png')} 
       style={styles.container}
       resizeMode="cover"
     >
+      <LinearGradient 
+        colors={['rgba(10,10,11,0.8)', 'transparent', '#0A0A0B']} 
+        style={StyleSheet.absoluteFill}
+      />
       {/* Navbar */}
       <View style={[styles.navbar, { justifyContent: 'center' }]}>
         <TouchableOpacity style={{ position: 'absolute', left: 0, top: 45, padding: 15 }} onPress={() => navigation.goBack()}>
