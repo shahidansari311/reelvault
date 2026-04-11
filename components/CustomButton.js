@@ -1,14 +1,14 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS } from '../constants/Theme';
+import { COLORS, SHADOWS, SPACING } from '../constants/Theme';
 
 export const CustomButton = ({ 
   onPress, 
   title, 
   loading, 
   disabled, 
-  colors = [COLORS.primary, COLORS.accent],
+  colors = [COLORS.primary, COLORS.secondary],
   icon: Icon,
   style
 }) => {
@@ -25,12 +25,12 @@ export const CustomButton = ({
         style={styles.gradient}
       >
         {loading ? (
-          <ActivityIndicator color={COLORS.text} />
+          <ActivityIndicator color="#000" />
         ) : (
-          <>
-            {Icon && <Icon color={COLORS.text} size={20} style={{ marginRight: 8 }} />}
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {Icon && <Icon color="#000" size={20} style={{ marginRight: 10 }} />}
             <Text style={styles.text}>{title}</Text>
-          </>
+          </View>
         )}
       </LinearGradient>
     </TouchableOpacity>
@@ -40,9 +40,10 @@ export const CustomButton = ({
 const styles = StyleSheet.create({
   button: {
     width: '100%',
-    height: 56,
-    borderRadius: 16,
+    height: 60,
+    borderRadius: 20,
     overflow: 'hidden',
+    ...SHADOWS.primary,
   },
   gradient: {
     flex: 1,
@@ -51,8 +52,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   text: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: 'bold',
+    color: '#000',
+    fontSize: 17,
+    fontWeight: '900',
+    letterSpacing: 0.5,
   },
 });

@@ -3,29 +3,42 @@ import {
   StyleSheet,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
-  ActivityIndicator,
-  FlatList,
+  ScrollView,
   Image,
   Dimensions,
   Alert,
+  ImageBackground,
+  Modal,
 } from 'react-native';
-import { User, Download, Play, AlertCircle } from 'lucide-react-native';
-import { COLORS, SPACING } from '../constants/Theme';
+import { Video } from 'expo-av';
+import { useIsFocused } from '@react-navigation/native';
+import * as Clipboard from 'expo-clipboard';
+import { 
+  ArrowLeft, 
+  User, 
+  Globe, 
+  Shield, 
+  Download, 
+  Play, 
+  History, 
+  Lock, 
+} from 'lucide-react-native';
+import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 import { fetchStories } from '../services/api';
 import { downloadFile } from '../utils/download';
-import { CustomButton } from '../components/CustomButton';
 import { CustomInput } from '../components/CustomInput';
 
-const { width } = Dimensions.get('window');
-const COLUMN_WIDTH = width / 2 - SPACING.lg - SPACING.xs;
+const { width, height } = Dimensions.get('window');
 
-export default function StoryViewerScreen() {
+export default function StoryViewerScreen({ navigation }) {
+  const isFocused = useIsFocused();
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [stories, setStories] = useState([]);
   const [error, setError] = useState(null);
+  const [searchType, setSearchType] = useState('profile'); // 'profile' or 'link'
+  const [selectedStory, setSelectedStory] = useState(null);
 
   const handleFetch = async () => {
     if (!username) return;
@@ -33,167 +46,492 @@ export default function StoryViewerScreen() {
     setError(null);
     setStories([]);
 
+    let target = username.trim();
+    
+    if (searchType === 'link') {
+      if (target.includes('instagram.com/')) {
+        const parts = target.split('/');
+        const storyIndex = parts.indexOf('stories');
+        if (storyIndex !== -1 && parts[storyIndex + 1]) {
+          target = parts[storyIndex + 1];
+        } else {
+          target = parts.filter(p => p.length > 0).pop();
+        }
+      }
+    }
+    
+    target = target.replace('@', '').split('?')[0];
+
     try {
-      const data = await fetchStories(username.trim().replace('@', ''));
+      const data = await fetchStories(target);
       if (data && data.length > 0) {
         setStories(data);
       } else {
-        setError('No stories found or account is private.');
+        setError({ 
+          title: 'No Stories Found', 
+          message: 'This user hasn\'t posted any stories recently.' 
+        });
       }
     } catch (err) {
-      const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to fetch stories. Try again.';
-      setError(msg);
+      const errorTitle = err.response?.data?.error || 'No Stories Found';
+      const errorMsg = err.response?.data?.message || 'We couldn\'t find any stories for this user. They might be private.';
+      setError({ title: errorTitle, message: errorMsg });
     } finally {
       setLoading(false);
     }
   };
 
   const handleDownload = async (item) => {
-    const fileName = `ReelVault_Story_${Date.now()}.${item.type === 'video' ? 'mp4' : 'jpg'}`;
-    const success = await downloadFile(item.url, fileName, item.type);
+    if (!item) return;
+    setLoading(true);
+    const success = await downloadFile(item.url, `story_${Date.now()}.${item.type === 'video' ? 'mp4' : 'jpg'}`);
+    setLoading(false);
     if (success) {
-      Alert.alert('Success', 'Story saved to gallery!');
+      Alert.alert('Archive Success', 'Media saved to your high-fidelity vault.');
     }
   };
 
-  const renderStoryItem = ({ item }) => (
-    <View style={styles.storyCard}>
-      <Image source={{ uri: item.thumbnail || item.url }} style={styles.thumbnail} />
-      {item.type === 'video' && (
-        <View style={styles.videoBadge}>
-          <Play color={COLORS.text} size={14} fill={COLORS.text} />
-        </View>
-      )}
-      <TouchableOpacity 
-        style={styles.storyDownloadBtn} 
-        onPress={() => handleDownload(item)}
-      >
-        <Download color={COLORS.text} size={20} />
-      </TouchableOpacity>
-    </View>
-  );
-
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Story Viewer</Text>
-      <Text style={styles.subtitle}>Enter Instagram username (Public only)</Text>
-
-      <CustomInput
-        icon={User}
-        placeholder="username"
-        value={username}
-        onChangeText={setUsername}
-        onClear={() => setUsername('')}
-      />
-
-      <CustomButton
-        title="View Stories"
-        onPress={handleFetch}
-        loading={loading}
-        disabled={!username}
-        colors={[COLORS.secondary, COLORS.accent]}
-        style={{ marginBottom: SPACING.lg }}
-      />
-
-      {error ? (
-        <View style={styles.errorContainer}>
-          <AlertCircle color={COLORS.error} size={24} />
-          <Text style={styles.errorText}>{error}</Text>
+    <ImageBackground 
+      source={require('../assets/background.png')} 
+      style={styles.container}
+      resizeMode="cover"
+    >
+      {/* Navbar */}
+      <View style={styles.navbar}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <ArrowLeft color={COLORS.text} size={24} />
+        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Shield color={COLORS.primary} size={18} style={{ marginRight: 8 }} />
+          <Text style={styles.navTitle}>REELVAULT</Text>
         </View>
-      ) : (
-        <FlatList
-          data={stories}
-          renderItem={renderStoryItem}
-          keyExtractor={(item, index) => index.toString()}
-          numColumns={2}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            !loading && (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>Find stories to download</Text>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 150 }}>
+        {/* Toggle Grid */}
+        <View style={styles.toggleGrid}>
+          <TouchableOpacity 
+            style={[styles.toggleBtn, searchType === 'profile' && styles.toggleBtnActive]}
+            onPress={() => setSearchType('profile')}
+          >
+            <User color={searchType === 'profile' ? '#000' : COLORS.textSecondary} size={18} />
+            <Text style={[styles.toggleText, searchType === 'profile' && styles.toggleTextActive]}>BY USER</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.toggleBtn, searchType === 'link' && styles.toggleBtnActive]}
+            onPress={() => setSearchType('link')}
+          >
+            <Globe color={searchType === 'link' ? '#000' : COLORS.textSecondary} size={18} />
+            <Text style={[styles.toggleText, searchType === 'link' && styles.toggleTextActive]}>BY LINK</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Hero Section */}
+        <View style={styles.heroSection}>
+          <Text style={styles.heroTitle}>
+            {searchType === 'profile' ? 'Profile Search' : 'Link Resolver'}
+          </Text>
+          <Text style={styles.heroSub}>
+            {searchType === 'profile' 
+              ? 'Enter any public username to curate active stories into your archive.'
+              : 'Paste a direct story link to resolve and download high-fidelity media.'}
+          </Text>
+        </View>
+
+        {/* Search Bubble */}
+        <View style={styles.extractionCard}>
+          <CustomInput
+            placeholder={searchType === 'profile' ? "beingrimi_, cristiano..." : "Paste Instagram Story Link"}
+            value={username}
+            onChangeText={(text) => {
+              setUsername(text);
+              setError(null);
+              
+              // 🧠 Intelligent Auto-Redirection
+              const cleanText = text.trim();
+              if (cleanText.includes('instagram.com') || cleanText.includes('http')) {
+                if (searchType !== 'link') setSearchType('link');
+              } else if (cleanText.length > 0 && !cleanText.includes('/') && !cleanText.includes(' ')) {
+                if (searchType !== 'profile') setSearchType('profile');
+              }
+            }}
+            onClear={() => {
+              setUsername('');
+              setError(null);
+            }}
+            icon={searchType === 'profile' ? User : Globe}
+            suffix={() => (
+              <TouchableOpacity 
+                style={styles.inlinePasteBtn} 
+                 onPress={async () => {
+                   const text = await Clipboard.getStringAsync();
+                   const cleanText = text.trim();
+                   setUsername(cleanText);
+                   setError(null);
+
+                   // 🧠 Intelligent Auto-Redirection on Paste
+                   if (cleanText.includes('instagram.com') || cleanText.includes('http')) {
+                     setSearchType('link');
+                   } else if (cleanText.length > 0 && !cleanText.includes('/') && !cleanText.includes(' ')) {
+                     setSearchType('profile');
+                   }
+                 }}
+              >
+                <Text style={styles.pasteBubbleText}>Paste</Text>
+              </TouchableOpacity>
+            )}
+          />
+          
+          <TouchableOpacity 
+            style={[styles.fetchBtn, loading && { opacity: 0.7 }]} 
+            onPress={handleFetch}
+            disabled={loading}
+          >
+            <Text style={styles.fetchBtnText}>
+              {loading ? 'Resolving Universe...' : (searchType === 'profile' ? 'GET STORIES' : 'EXTRACT MEDIA')}
+            </Text>
+          </TouchableOpacity>
+          
+          {error && (
+            <View style={styles.errorBubble}>
+              <View style={styles.errorIconHeader}>
+                <Shield color="#FF6B6B" size={16} />
+                <Text style={styles.errorTitle}>{error.title}</Text>
               </View>
-            )
-          }
-        />
-      )}
-    </View>
+              <Text style={styles.errorBody}>{error.message}</Text>
+            </View>
+          )}
+
+          <Text style={styles.privacyNote}>
+            * Archive integrity is maintained. Private profiles remain restricted.
+          </Text>
+        </View>
+
+        {/* Results Grid */}
+        <View style={styles.storyGrid}>
+          {stories.map((item, index) => (
+            <TouchableOpacity 
+              key={index} 
+              style={styles.storyPreviewCard}
+              onPress={() => setSelectedStory(item)}
+            >
+              <Image source={{ uri: item.thumbnail || item.url }} style={styles.storyThumb} />
+              {item.type === 'video' && (
+                <View style={styles.typeBadge}>
+                  <Text style={styles.typeText}>VIDEO</Text>
+                </View>
+              )}
+              <View style={styles.playOverlay}>
+                <Play color="#FFF" size={24} fill="rgba(255,255,255,0.4)" />
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Cinematic Story Player Modal */}
+      <Modal
+        visible={!!selectedStory}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSelectedStory(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <TouchableOpacity 
+            style={styles.closeArea} 
+            onPress={() => setSelectedStory(null)} 
+          />
+          
+          <View style={styles.playerContainer}>
+            {selectedStory?.type === 'video' ? (
+              <Video
+                source={{ uri: selectedStory.url }}
+                rate={1.0}
+                volume={1.0}
+                isMuted={false}
+                resizeMode="cover"
+                shouldPlay={isFocused}
+                isLooping
+                style={styles.fullScreenPlayer}
+              />
+            ) : (
+              <Image 
+                source={{ uri: selectedStory?.url }} 
+                style={styles.fullScreenPlayer}
+                resizeMode="contain"
+              />
+            )}
+
+            {/* Modal Controls */}
+            <View style={styles.modalControls}>
+              <TouchableOpacity 
+                style={styles.modalCloseBtn}
+                onPress={() => setSelectedStory(null)}
+              >
+                <ArrowLeft color="#FFF" size={24} />
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.modalDownloadBtn}
+                onPress={() => handleDownload(selectedStory)}
+              >
+                <Download color="#000" size={24} />
+                <Text style={styles.modalDownloadText}>SAVE TO VAULT</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
-    padding: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginTop: SPACING.xl,
-    textAlign: 'center',
+  navbar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    height: 100,
+    paddingTop: 50,
   },
-  subtitle: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xl,
-    textAlign: 'center',
-  },
-  listContainer: {
-    paddingBottom: SPACING.xl,
-  },
-  storyCard: {
-    width: COLUMN_WIDTH,
-    height: COLUMN_WIDTH * 1.5,
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    margin: SPACING.xs,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  thumbnail: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  videoBadge: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    padding: 4,
-    borderRadius: 12,
-  },
-  storyDownloadBtn: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    backgroundColor: COLORS.primary,
-    padding: 8,
-    borderRadius: 20,
-    elevation: 3,
-  },
-  errorContainer: {
-    flex: 1,
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  navTitle: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: 'bold',
+    letterSpacing: 2,
+  },
+  toggleGrid: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 20,
+    padding: 6,
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  toggleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 48,
+    borderRadius: 14,
+  },
+  toggleBtnActive: {
+    backgroundColor: COLORS.primary,
+    ...SHADOWS.primary,
+  },
+  toggleText: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginLeft: 8,
+    letterSpacing: 1.5,
+  },
+  toggleTextActive: {
+    color: '#000',
+  },
+  heroSection: {
+    marginTop: 32,
+    marginBottom: 32,
+  },
+  heroTitle: {
+    color: COLORS.text,
+    fontSize: 34,
+    fontWeight: '900',
+  },
+  heroSub: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 22,
+    marginTop: 8,
+    opacity: 0.8,
+  },
+  extractionCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 32,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    ...SHADOWS.glass,
+  },
+  inlinePasteBtn: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    height: 34,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pasteBubbleText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  fetchBtn: {
+    backgroundColor: COLORS.primary,
+    height: 60,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+    ...SHADOWS.primary,
+  },
+  fetchBtnText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  errorBubble: {
+    backgroundColor: 'rgba(255,107,107,0.05)',
+    borderRadius: 20,
+    padding: 16,
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,107,0.1)',
+  },
+  errorIconHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  errorTitle: {
+    color: '#FF6B6B',
+    fontSize: 13,
+    fontWeight: 'bold',
+    marginLeft: 8,
+    letterSpacing: 0.5,
+  },
+  errorBody: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  privacyNote: {
+    color: 'rgba(255,255,255,0.3)',
+    fontSize: 10,
+    textAlign: 'center',
+    marginTop: 15,
+    fontStyle: 'italic',
+  },
+  storyGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     marginTop: 40,
   },
-  errorText: {
-    color: COLORS.error,
-    marginTop: 10,
-    fontSize: 14,
-    textAlign: 'center',
+  storyPreviewCard: {
+    width: (width - SPACING.lg * 2 - 15) / 2,
+    aspectRatio: 9 / 16,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: COLORS.surface,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
   },
-  emptyContainer: {
-    flex: 1,
+  storyThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  typeBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  typeText: {
+    color: COLORS.text,
+    fontSize: 9,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+  },
+  playOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 100,
   },
-  emptyText: {
-    color: COLORS.textSecondary,
-    fontSize: 16,
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeArea: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  playerContainer: {
+    width: width * 0.9,
+    height: height * 0.8,
+    borderRadius: 32,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  fullScreenPlayer: {
+    width: '100%',
+    height: '100%',
+  },
+  modalControls: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalCloseBtn: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  modalDownloadBtn: {
+    flex: 1,
+    height: 60,
+    backgroundColor: COLORS.primary,
+    borderRadius: 30,
+    marginLeft: 15,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...SHADOWS.primary,
+  },
+  modalDownloadText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '900',
+    marginLeft: 10,
+    letterSpacing: 1,
   },
 });

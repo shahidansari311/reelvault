@@ -1,8 +1,10 @@
 import React from 'react';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { Film, Instagram } from 'lucide-react-native';
+import { LayoutGrid, Search, Heart, User } from 'lucide-react-native';
+import HomeScreen from './screens/HomeScreen';
 import ReelDownloaderScreen from './screens/ReelDownloaderScreen';
 import StoryViewerScreen from './screens/StoryViewerScreen';
 import { COLORS } from './constants/Theme';
@@ -14,9 +16,9 @@ const MyDarkTheme = {
   colors: {
     ...DarkTheme.colors,
     background: COLORS.background,
-    card: COLORS.surface,
+    card: COLORS.background,
     text: COLORS.text,
-    border: COLORS.border,
+    border: 'transparent',
     notification: COLORS.primary,
   },
 };
@@ -29,23 +31,45 @@ export default function App() {
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarStyle: {
-            backgroundColor: COLORS.surface,
-            borderTopColor: COLORS.border,
-            height: 70,
-            paddingBottom: 10,
-            paddingTop: 10,
+            backgroundColor: 'rgba(21, 21, 24, 0.95)',
+            borderTopWidth: 0,
+            height: 85,
+            paddingBottom: 20,
+            paddingTop: 15,
+            position: 'absolute',
+            borderTopLeftRadius: 30,
+            borderTopRightRadius: 30,
+            elevation: 0,
           },
           tabBarActiveTintColor: COLORS.primary,
           tabBarInactiveTintColor: COLORS.textSecondary,
-          tabBarIcon: ({ color, size }) => {
-            if (route.name === 'Reels') {
-              return <Film size={size} color={color} />;
-            } else if (route.name === 'Stories') {
-              return <Instagram size={size} color={color} />;
-            }
+          tabBarShowLabel: false,
+          tabBarIcon: ({ color, size, focused }) => {
+            let Icon;
+            if (route.name === 'Home') Icon = LayoutGrid;
+            else if (route.name === 'Reels') Icon = Search;
+            else Icon = Heart;
+
+            return (
+              <View style={{ alignItems: 'center' }}>
+                <Icon size={24} color={color} />
+                {focused && (
+                  <View 
+                    style={{ 
+                      width: 4, 
+                      height: 4, 
+                      borderRadius: 2, 
+                      backgroundColor: COLORS.primary, 
+                      marginTop: 6 
+                    }} 
+                  />
+                )}
+              </View>
+            );
           },
         })}
       >
+        <Tab.Screen name="Home" component={HomeScreen} />
         <Tab.Screen name="Reels" component={ReelDownloaderScreen} />
         <Tab.Screen name="Stories" component={StoryViewerScreen} />
       </Tab.Navigator>
