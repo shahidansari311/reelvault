@@ -10,40 +10,33 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write   # ✅ FIXED
+      contents: write   # ✅ FIX 403
 
     steps:
-      - name: 🏗 Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: ⚙️ Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: ⚙️ Setup EAS
-        uses: expo/expo-github-action@v8
+      - uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: 📦 Install dependencies
-        run: npm install
+      - run: npm install
 
-      - name: 🚀 Build APK (WAIT for build)
+      - name: Build APK
         run: eas build -p android --profile preview --non-interactive
 
-      - name: 📄 Create Release (Link only)
+      - name: Create Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: ReelVault Release ${{ github.ref_name }}
+          name: ReelVault ${{ github.ref_name }}
           body: |
-            🚀 APK built successfully!
+            ✅ APK build started successfully!
 
-            👉 Download your APK from Expo:
+            📥 Download APK from:
             https://expo.dev/accounts/shahid310/projects/reelvault/builds
-
-            (Latest build will be available here)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
