@@ -1,61 +1,42 @@
 name: Build Android APK
+
 on:
   push:
     tags:
-      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+      - 'v*'
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-      - name: 🏗 Checkout
-        uses: actions/checkout@v4
 
-      - name: ⚙️ Setup Node
-        uses: actions/setup-node@v4
+    permissions:
+      contents: write   # ✅ FIX 403
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
-      - name: ⚙️ Setup EAS
-        uses: expo/expo-github-action@v8
+      - uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: 📦 Install dependencies
-        run: npm install
+      - run: npm install
 
-      - name: 🚀 Build APK
-        run: eas build -p android --profile preview --non-interactive --no-wait
+      - name: Build APK
+        run: eas build -p android --profile preview --non-interactive
 
-      - name: 📥 Download APK
-        run: |
-          # 🧠 We need to get the download link from EAS and download it here
-          # Since eas build --no-wait returns immediately, for automation 
-          # it's better to wait or use a different strategy.
-          # Actually, the easiest way for a professional GitHub release 
-          # is to let EAS handle the APK and we just link it.
-          # But for now, let's just make it build successfully!
-          echo "Build triggered on Expo Cloud!"
-
-      - name: 🚀 Create Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: ReelVault.apk
-          name: ReelVault Release ${{ github.ref_name }}
+          name: ReelVault ${{ github.ref_name }}
           body: |
-            ## ReelVault Archive Utility
-            
-            Download the latest high-fidelity APK below.
-            
-            ### Features:
-            - Cinematic 4:5 Reel Previews
-            - Auto-Auth Story Discovery (Username/Link)
-            - Intelligent Mode Switching
-            - High-Fidelity "Abyss" UI
-          draft: false
-          prerelease: false
+            ✅ APK build started successfully!
+
+            📥 Download APK from:
+            https://expo.dev/accounts/shahid310/projects/reelvault/builds
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

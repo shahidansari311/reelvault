@@ -12,12 +12,22 @@ const COOKIES_RENDER = '/etc/secrets/instagram_cookies.txt';
 // 🍪 Priority: Render Secret File > Local File
 const COOKIES_PATH = fs.existsSync(COOKIES_RENDER) ? COOKIES_RENDER : COOKIES_LOCAL;
 
-app.use(cors());
 app.use(express.json());
 
-app.get('/',(req,res)=>{
-  res.json({message:"Reelvault Backend is running"});
-})
+// 💓 Heartbeat Route - Verify Server Status
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ONLINE',
+    engine: 'ReelVault Core',
+    version: '1.0.0',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    message: 'High-fidelity archival services are active.'
+  });
+});
+
+console.log('🔍 System Check: Cookie Source ->', COOKIES_PATH);
+console.log('📁 Cookie File Exists?', fs.existsSync(COOKIES_PATH) ? 'YES' : 'NO');
 
 // 1. Download Reel Endpoint (Powered by yt-dlp)
 app.post('/download', async (req, res) => {
