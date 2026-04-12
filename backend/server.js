@@ -10,9 +10,18 @@ const HOST = '0.0.0.0'; // Essential for Render/Production environments
 
 const COOKIES_LOCAL = path.join(__dirname, 'instagram_cookies.txt');
 const COOKIES_RENDER = '/etc/secrets/instagram_cookies.txt';
+const COOKIES_TMP = '/tmp/instagram_cookies.txt';
 
-// 🍪 Priority: Render Secret File > Local File
-const COOKIES_PATH = fs.existsSync(COOKIES_RENDER) ? COOKIES_RENDER : COOKIES_LOCAL;
+// 🍪 Priority: Writable /tmp File (Copied from Render) > Local File
+if (fs.existsSync(COOKIES_RENDER)) {
+  // Copy to a writable directory because yt-dlp tries to save/update cookies on exit
+  try {
+    fs.copyFileSync(COOKIES_RENDER, COOKIES_TMP);
+  } catch(e) {
+    console.error('Failed to copy cookie file to tmp', e);
+  }
+}
+const COOKIES_PATH = fs.existsSync(COOKIES_TMP) ? COOKIES_TMP : COOKIES_LOCAL;
 
 app.use(cors());
 app.use(express.json());
