@@ -61,8 +61,8 @@ app.post('/download', async (req, res) => {
     return res.status(400).json({ error: 'Reel URL is required' });
   }
 
-  // 1. Sanitize the URL
-  const cleanUrl = reelUrl.split('?')[0];
+  // 1. Sanitize the URL (Removed truncation as it breaks some valid links)
+  const cleanUrl = reelUrl.trim();
   console.log('Starting Reel extraction for:', cleanUrl);
 
   // 2. Check for Authentication (Priority: Manual File > Local Browser Auto-Auth)
@@ -76,27 +76,35 @@ app.post('/download', async (req, res) => {
   // Added timeout (30s) to prevent hanging processes
   exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
     if (error) {
-      console.error('Extraction Error:', stderr || error.message);
+      console.error('Extraction Error Details:', stderr || error.message);
       
-      let errorMsg = 'Oops! Broken Link';
-      let subMsg = 'We couldn\'t find a video at this link. Please check it and try again.';
+      let errorMsg = 'Extraction Failed';
+      let subMsg = 'We couldn\'t process this link. It might be broken or private.';
       let statusCode = 500;
 
       if (stderr.includes('Login required') || stderr.includes('Private')) {
         errorMsg = 'Private Account';
-        subMsg = 'This account is private, so we can\'t download from it.';
+        subMsg = 'This account is private. We need authenticated access to download this.';
         statusCode = 403;
-      } else if (stderr.includes('404')) {
-        errorMsg = 'Video Missing';
-        subMsg = 'This video might have been deleted or moved.';
+      } else if (stderr.includes('404') || stderr.includes('Not Found')) {
+        errorMsg = 'Video Not Found';
+        subMsg = 'This Reel might have been deleted or the link is incorrect.';
         statusCode = 404;
       } else if (error.killed) {
-        errorMsg = 'Request Timeout';
-        subMsg = 'Instagram took too long to respond. Please try again.';
+        errorMsg = 'Server Timeout';
+        subMsg = 'Render taking too long to process. The video might be too large or Instagram is slow.';
         statusCode = 504;
+      } else if (stderr.includes('Sign in') || stderr.includes('Rate limit')) {
+        errorMsg = 'Instagram Blocked Us';
+        subMsg = 'Instagram is temporarily blocking our server. Please try again later.';
+        statusCode = 429;
       }
 
-      return res.status(statusCode).json({ error: errorMsg, message: subMsg });
+      return res.status(statusCode).json({ 
+        error: errorMsg, 
+        message: subMsg,
+        details: process.env.NODE_ENV === 'development' ? stderr : undefined
+      });
     }
     
     const videoUrl = stdout.trim();
