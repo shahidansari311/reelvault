@@ -4,7 +4,12 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "build": "npm install && pip install -r requirements.txt || echo 'Pip not found, skipping python deps'",
+    "postinstall": "pip install -U yt-dlp || echo 'Skipping yt-dlp update'",
     "dev": "nodemon server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "axios": "^1.6.2",

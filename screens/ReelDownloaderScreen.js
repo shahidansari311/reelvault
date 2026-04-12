@@ -294,7 +294,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   extractionCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(0, 0, 0, 0.88)',
     borderRadius: 32,
     padding: 24,
     borderWidth: 1,
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     height: 60,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(0, 0, 0, 1)',
   },
   input: {
     flex: 1,
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   pasteBubbleBtn: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(55, 51, 51, 0.83)',
     height: 36,
     paddingHorizontal: 16,
     borderRadius: 10,
@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   inlinePasteBtn: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.26)',
     height: 34,
     paddingHorizontal: 14,
     borderRadius: 10,
