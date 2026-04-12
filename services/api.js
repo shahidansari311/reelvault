@@ -6,7 +6,7 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.5:5000'; //
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 15000,
+  timeout: 45000, // Increased timeout to 45s since video extraction takes time
   headers: {
     'Content-Type': 'application/json',
   },
