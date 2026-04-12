@@ -12,7 +12,6 @@ import {
   Image,
   Dimensions,
   ScrollView,
-  ImageBackground,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
@@ -143,14 +142,15 @@ export default function ReelDownloaderScreen({ navigation, route }) {
   };
 
   return (
-    <ImageBackground 
-      source={require('../assets/vault_bg.png')} 
+    <LinearGradient 
+      colors={['#0A0A0B', '#151518', '#050505']} 
       style={styles.container}
-      resizeMode="cover"
     >
       <LinearGradient 
-        colors={['rgba(10,10,11,0.8)', 'transparent', '#0A0A0B']} 
+        colors={['rgba(180, 185, 255, 0.03)', 'transparent', 'transparent']} 
         style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       />
       {/* Navbar */}
       <View style={[styles.navbar, { justifyContent: 'center' }]}>
@@ -254,7 +254,7 @@ export default function ReelDownloaderScreen({ navigation, route }) {
           </View>
         )}
       </ScrollView>
-    </ImageBackground>
+    </LinearGradient>
   );
 }
 

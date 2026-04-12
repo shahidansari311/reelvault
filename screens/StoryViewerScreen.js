@@ -9,7 +9,6 @@ import {
   Dimensions,
   Alert,
   Modal,
-  ImageBackground
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Video } from 'expo-av';
@@ -95,14 +94,15 @@ export default function StoryViewerScreen({ navigation }) {
   };
 
   return (
-    <ImageBackground 
-      source={require('../assets/vault_bg.png')} 
+    <LinearGradient 
+      colors={['#0A0A0B', '#151518', '#050505']} 
       style={styles.container}
-      resizeMode="cover"
     >
       <LinearGradient 
-        colors={['rgba(10,10,11,0.8)', 'transparent', '#0A0A0B']} 
+        colors={['rgba(180, 185, 255, 0.03)', 'transparent', 'transparent']} 
         style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       />
       {/* Navbar */}
       <View style={styles.navbar}>
@@ -178,7 +178,7 @@ export default function StoryViewerScreen({ navigation }) {
                    const cleanText = text.trim();
                    setUsername(cleanText);
                    setError(null);
-
+ 
                    if (cleanText.includes('instagram.com') || cleanText.includes('http')) {
                      setSearchType('link');
                    } else if (cleanText.length > 0 && !cleanText.includes('/') && !cleanText.includes(' ')) {
@@ -210,12 +210,12 @@ export default function StoryViewerScreen({ navigation }) {
               <Text style={styles.errorBody}>{error.message}</Text>
             </View>
           )}
-
+ 
           <Text style={styles.privacyNote}>
             * Archive integrity is maintained. Private profiles remain restricted.
           </Text>
         </View>
-
+ 
         <View style={styles.storyGrid}>
           {stories.map((item, index) => (
             <TouchableOpacity 
@@ -238,7 +238,7 @@ export default function StoryViewerScreen({ navigation }) {
           )}
         </View>
       </ScrollView>
-
+ 
       <Modal
         visible={!!selectedStory}
         transparent={true}
@@ -265,7 +265,7 @@ export default function StoryViewerScreen({ navigation }) {
                 resizeMode="contain"
               />
             )}
-
+ 
             <View style={styles.modalControls}>
               <TouchableOpacity 
                 style={styles.modalCloseBtn}
@@ -273,7 +273,7 @@ export default function StoryViewerScreen({ navigation }) {
               >
                 <ArrowLeft color="#FFF" size={24} />
               </TouchableOpacity>
-
+ 
               <TouchableOpacity 
                 style={styles.modalDownloadBtn}
                 onPress={() => handleDownload(selectedStory)}
@@ -285,7 +285,7 @@ export default function StoryViewerScreen({ navigation }) {
           </View>
         </View>
       </Modal>
-    </ImageBackground>
+    </LinearGradient>
   );
 }
 
