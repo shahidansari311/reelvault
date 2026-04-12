@@ -70,8 +70,8 @@ app.post('/download', async (req, res) => {
     ? `--cookies "${COOKIES_PATH}"` 
     : `--cookies-from-browser chrome --cookies-from-browser edge --cookies-from-browser brave`;
 
-  // 3. Execute yt-dlp with "Stealth" and "Performance" flags
-  const command = `yt-dlp -g ${authFlag} --no-playlist --no-warnings --no-check-certificates --geo-bypass --format "mp4" --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" --referer "https://www.instagram.com/" "${cleanUrl}"`;
+  // 3. Execute yt-dlp with "best" combined format to avoid split audio/video
+  const command = `yt-dlp -g ${authFlag} --no-playlist --no-warnings --no-check-certificates --geo-bypass --format "best[ext=mp4]/best" --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" --referer "https://www.instagram.com/" "${cleanUrl}"`;
   
   // Added timeout (30s) to prevent hanging processes
   exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
@@ -126,16 +126,16 @@ app.get('/stories/:username', async (req, res) => {
   
   console.log(`Starting Story extraction for user: ${target}`);
   
-  // 2. Check for Authentication (Priority: Manual File > Local Browser Auto-Auth)
+  // 2. Check for Authentication
   const authFlag = fs.existsSync(COOKIES_PATH) 
     ? `--cookies "${COOKIES_PATH}"` 
     : `--cookies-from-browser chrome --cookies-from-browser edge --cookies-from-browser brave`;
 
-  // 3. Use yt-dlp to fetch all active stories (Mobile Spoofing Mode)
+  // 3. Use yt-dlp with "best" format to ensure combined audio/video
   const storyUrl = `https://www.instagram.com/stories/${target}/`;
-  const command = `yt-dlp -g ${authFlag} --no-playlist --no-warnings --no-check-certificates --geo-bypass --flat-playlist --add-header "Accept-Language: en-US,en;q=0.9" --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" --referer "https://www.instagram.com/" "${storyUrl}"`;
+  const command = `yt-dlp -g ${authFlag} --no-playlist --no-warnings --no-check-certificates --geo-bypass --format "best[ext=mp4]/best" --add-header "Accept-Language: en-US,en;q=0.9" --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" --referer "https://www.instagram.com/" "${storyUrl}"`;
 
-  exec(command, { timeout: 45000 }, (error, stdout, stderr) => {
+  exec(command, { timeout: 60000 }, (error, stdout, stderr) => {
     if (error) {
       console.warn('Story Extraction Issue:', stderr || error.message);
       

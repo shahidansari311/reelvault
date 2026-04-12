@@ -27,7 +27,7 @@ import {
   CheckCircle2
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
-import { fetchStories } from '../services/api';
+import { fetchStories, fetchReelData } from '../services/api';
 import { downloadFile } from '../utils/download';
 import { CustomInput } from '../components/CustomInput';
 
@@ -49,15 +49,18 @@ export default function StoryViewerScreen({ navigation }) {
     setStories([]);
 
     let target = username.trim();
+    let isReel = false;
     
-    if (searchType === 'link') {
-      if (target.includes('instagram.com/')) {
+    if (target.includes('instagram.com/')) {
+      if (target.includes('/reel/') || target.includes('/reels/') || target.includes('/p/')) {
+        isReel = true;
+      } else {
         const parts = target.split('/');
         const storyIndex = parts.indexOf('stories');
         if (storyIndex !== -1 && parts[storyIndex + 1]) {
           target = parts[storyIndex + 1];
         } else {
-          target = parts.filter(p => p.length > 0).pop();
+          target = target.split('?')[0].split('/').filter(p => p.length > 0).pop();
         }
       }
     }
@@ -65,18 +68,28 @@ export default function StoryViewerScreen({ navigation }) {
     target = target.replace('@', '').split('?')[0];
 
     try {
-      const data = await fetchStories(target);
-      if (data && data.length > 0) {
-        setStories(data);
+      if (isReel) {
+        const data = await fetchReelData(username.trim());
+        setStories([{
+          type: 'video',
+          url: data.videoUrl,
+          thumbnail: data.videoUrl,
+          title: data.title
+        }]);
       } else {
-        setError({ 
-          title: 'No Stories Found', 
-          message: 'This user hasn\'t posted any stories recently.' 
-        });
+        const data = await fetchStories(target);
+        if (data && data.length > 0) {
+          setStories(data);
+        } else {
+          setError({ 
+            title: 'No Stories Found', 
+            message: 'This user hasn\'t posted any stories recently.' 
+          });
+        }
       }
     } catch (err) {
-      const errorTitle = err.response?.data?.error || 'No Stories Found';
-      const errorMsg = err.response?.data?.message || 'We couldn\'t find any stories for this user. They might be private.';
+      const errorTitle = err.response?.data?.error || 'Extraction Failed';
+      const errorMsg = err.response?.data?.message || 'We couldn\'t resolve this link. It might be private or broken.';
       setError({ title: errorTitle, message: errorMsg });
     } finally {
       setLoading(false);
@@ -223,9 +236,27 @@ export default function StoryViewerScreen({ navigation }) {
               style={styles.storyPreviewCard}
               onPress={() => setSelectedStory(item)}
             >
-              <Image source={{ uri: item.thumbnail || item.url }} style={styles.storyThumb} />
-              <View style={styles.playBadge}>
-                {item.type === 'video' ? <Play color="#FFF" size={14} /> : <Eye color="#FFF" size={14} />}
+              {item.type === 'video' ? (
+                <View style={styles.videoPreviewContainer}>
+                  <Image 
+                    source={{ uri: item.thumbnail || item.url }} 
+                    style={styles.storyThumb} 
+                    blurRadius={10} 
+                  />
+                  <View style={styles.playOverlay}>
+                    <Play color={COLORS.primary} size={32} />
+                  </View>
+                </View>
+              ) : (
+                <Image source={{ uri: item.url }} style={styles.storyThumb} />
+              )}
+              <View style={styles.typeBadge}>
+                {item.type === 'video' ? (
+                  <Play color="#FFF" size={10} style={{ marginRight: 4 }} />
+                ) : (
+                  <Eye color="#FFF" size={10} style={{ marginRight: 4 }} />
+                )}
+                <Text style={styles.typeText}>{item.type.toUpperCase()}</Text>
               </View>
             </TouchableOpacity>
           ))}
@@ -245,8 +276,8 @@ export default function StoryViewerScreen({ navigation }) {
         animationType="fade"
         onRequestClose={() => setSelectedStory(null)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.playerContainer}>
             {selectedStory?.type === 'video' ? (
               <Video
                 source={{ uri: selectedStory.url }}
@@ -452,17 +483,28 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  videoPreviewContainer: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   typeBadge: {
     position: 'absolute',
     top: 12,
     right: 12,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 8,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   typeText: {
-    color: COLORS.text,
+    color: '#FFF',
     fontSize: 9,
     fontWeight: 'bold',
     letterSpacing: 1,
