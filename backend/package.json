@@ -4,8 +4,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "build": "npm install && pip install -r requirements.txt || echo 'Pip not found, skipping python deps'",
-    "postinstall": "pip install -U yt-dlp || echo 'Skipping yt-dlp update'",
+    "build": "npm install && (python3 -m pip install -U yt-dlp || pip install -U yt-dlp || echo 'Pip failed')",
+    "postinstall": "python3 -m pip install -U yt-dlp || pip install -U yt-dlp || echo 'Skipping yt-dlp update'",
     "dev": "nodemon server.js"
   },
   "engines": {

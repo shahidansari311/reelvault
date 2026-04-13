@@ -184,10 +184,9 @@ function looksLikeYouTubeSignatureIssue(stderr) {
 }
 
 // 📱 YouTube Extraction Strategy:
-// 1. 'tvhtml5' often bypasses the GVS PO Token requirement that blocks 'web'/'mweb'.
-// 2. Added a modern User-Agent to mimic a real browser.
+// Using 'tv,android' clients and a standard User-Agent to ensure compatibility.
 const YT_CLIENT_ARGS = [
-  '--extractor-args', 'youtube:player_client=tvhtml5,web',
+  '--extractor-args', 'youtube:player_client=tv,android',
   '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
 ];
 
@@ -345,11 +344,10 @@ app.post('/youtube/download', async (req, res) => {
 
     let args;
     if (dlKind === 'video') {
-      let formatStr = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
+      let formatStr = 'bv*[ext=mp4]+ba/best[ext=mp4]/best';
       if (dlMaxHeight !== null && dlMaxHeight !== undefined) {
-        const requested = Number(dlMaxHeight);
-        const height = infoJson ? resolveHeightForRequest(requested, infoJson) : requested;
-        formatStr = `bestvideo[height<=${height}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${height}][ext=mp4]/best[height<=${height}]/bestvideo+bestaudio/best`;
+        const h = Number(dlMaxHeight);
+        formatStr = `bv*[height<=${h}][ext=mp4]+ba/best[height<=${h}][ext=mp4]/best[height<=${h}]/bv*+ba/best`;
       }
       args = [
         ...commonArgs,
@@ -367,7 +365,7 @@ app.post('/youtube/download', async (req, res) => {
         ...authArgs,
         '-x',
         '--audio-format', 'mp3',
-        '--audio-quality', `${dlAudioBitrate}K`,
+        '--audio-quality', '192K', // Standardizing to 192K as per user request
         '-o', outputTemplate,
         cleanUrl
       ];
