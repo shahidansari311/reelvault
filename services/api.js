@@ -79,6 +79,26 @@ export const fetchStories = async (username) => {
   }
 };
 
+export const fetchYouTubeInfo = async (url) => {
+  try {
+    const response = await api.post('/youtube/info', { url });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching YouTube info:', error);
+    throw error;
+  }
+};
+
+export const requestYouTubeDownload = async ({ url, format, quality }) => {
+  try {
+    const response = await api.post('/youtube/download', { url, format, quality });
+    return response.data;
+  } catch (error) {
+    console.error('Error requesting YouTube download:', error);
+    throw error;
+  }
+};
+
 
 export default api;
 

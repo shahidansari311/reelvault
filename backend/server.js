@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -25,6 +26,20 @@ const COOKIES_PATH = fs.existsSync(COOKIES_TMP) ? COOKIES_TMP : COOKIES_LOCAL;
 
 app.use(cors());
 app.use(express.json());
+
+const YT_DOWNLOADS_DIR = path.join(__dirname, 'downloads', 'youtube');
+try {
+  fs.mkdirSync(YT_DOWNLOADS_DIR, { recursive: true });
+} catch (e) {
+  console.error('Failed to create YouTube downloads dir', e);
+}
+
+app.use('/youtube/files', express.static(YT_DOWNLOADS_DIR, {
+  setHeaders(res) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+  }
+}));
 
 // Logger Middleware for tracking requests in deployment logs
 app.use((req, res, next) => {
@@ -52,6 +67,166 @@ app.get('/ping', (req, res) => res.status(200).send('pong'));
 
 console.log('🔍 System Check: Cookie Source ->', COOKIES_PATH);
 console.log('📁 Cookie File Exists?', fs.existsSync(COOKIES_PATH) ? 'YES' : 'NO');
+
+function secondsToDuration(seconds) {
+  if (!seconds && seconds !== 0) return '';
+  const s = Math.max(0, Math.floor(Number(seconds)));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+function isValidYouTubeUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  const u = url.trim();
+  return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i.test(u);
+}
+
+function runYtDlp(args, { timeoutMs = 5 * 60 * 1000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('yt-dlp', args, { windowsHide: true });
+
+    let stdout = '';
+    let stderr = '';
+    const timeout = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch {}
+    }, timeoutMs);
+
+    child.stdout.on('data', (d) => { stdout += d.toString(); });
+    child.stderr.on('data', (d) => { stderr += d.toString(); });
+
+    child.on('error', (err) => {
+      clearTimeout(timeout);
+      reject({ err, stdout, stderr });
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timeout);
+      if (code === 0) return resolve({ stdout, stderr });
+      reject({ code, stdout, stderr });
+    });
+  });
+}
+
+function makePublicDownloadUrl(req, fileName) {
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').toString().split(',')[0].trim();
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  return `${proto}://${host}/youtube/files/${encodeURIComponent(fileName)}`;
+}
+
+// YouTube: Fetch Info (yt-dlp)
+app.post('/youtube/info', async (req, res) => {
+  const { url } = req.body || {};
+  if (!isValidYouTubeUrl(url)) {
+    return res.status(400).json({ error: 'Invalid link', message: 'Please paste a valid YouTube link.' });
+  }
+
+  try {
+    const { stdout } = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', url.trim()], { timeoutMs: 30000 });
+    const info = JSON.parse(stdout.trim());
+    return res.json({
+      title: info.title || '',
+      thumbnail: info.thumbnail || '',
+      duration: info.duration_string || secondsToDuration(info.duration)
+    });
+  } catch (e) {
+    const details = (e && (e.stderr || e.err?.message || '')) || '';
+    console.error('YouTube info error:', details);
+    return res.status(500).json({
+      error: 'Extraction Failed',
+      message: 'Could not fetch YouTube info. Please try again.',
+      details: process.env.NODE_ENV === 'development' ? details : undefined
+    });
+  }
+});
+
+// YouTube: Download to server + return file URL
+app.post('/youtube/download', async (req, res) => {
+  const { url, format, quality } = req.body || {};
+
+  if (!isValidYouTubeUrl(url)) {
+    return res.status(400).json({ error: 'Invalid link', message: 'Please paste a valid YouTube link.' });
+  }
+  if (format !== 'mp4' && format !== 'mp3') {
+    return res.status(400).json({ error: 'Invalid format', message: 'format must be mp4 or mp3.' });
+  }
+
+  const q = String(quality || '').trim();
+  const mp4Qualities = new Set(['360p', '720p', '1080p']);
+  const mp3Qualities = new Set(['128', '192', '320']);
+  if (format === 'mp4' && !mp4Qualities.has(q)) {
+    return res.status(400).json({ error: 'Invalid quality', message: 'For mp4, quality must be 360p, 720p, or 1080p.' });
+  }
+  if (format === 'mp3' && !mp3Qualities.has(q)) {
+    return res.status(400).json({ error: 'Invalid quality', message: 'For mp3, quality must be 128, 192, or 320.' });
+  }
+
+  const cleanUrl = url.trim();
+
+  // Always extract metadata first for preview response fields
+  let title = '';
+  let thumbnail = '';
+  let duration = '';
+  try {
+    const { stdout } = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', cleanUrl], { timeoutMs: 30000 });
+    const info = JSON.parse(stdout.trim());
+    title = info.title || '';
+    thumbnail = info.thumbnail || '';
+    duration = info.duration_string || secondsToDuration(info.duration);
+  } catch (e) {
+    // Non-fatal: still attempt download
+    console.warn('YouTube metadata fetch failed; continuing to download');
+  }
+
+  const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const ext = format === 'mp4' ? 'mp4' : 'mp3';
+  const fileName = `reelvault_youtube_${id}.${ext}`;
+  const outputPath = path.join(YT_DOWNLOADS_DIR, fileName);
+
+  try {
+    const commonArgs = ['--no-playlist', '--no-warnings', '--no-check-certificates', '--geo-bypass'];
+
+    let args;
+    if (format === 'mp4') {
+      const height = Number(q.replace('p', ''));
+      args = [
+        ...commonArgs,
+        '-f', `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best`,
+        '--merge-output-format', 'mp4',
+        '-o', outputPath,
+        cleanUrl
+      ];
+    } else {
+      args = [
+        ...commonArgs,
+        '-x',
+        '--audio-format', 'mp3',
+        '--audio-quality', `${q}K`,
+        '-o', outputPath,
+        cleanUrl
+      ];
+    }
+
+    await runYtDlp(args, { timeoutMs: 10 * 60 * 1000 });
+
+    if (!fs.existsSync(outputPath)) {
+      return res.status(500).json({ error: 'Download Failed', message: 'The file could not be generated.' });
+    }
+
+    const downloadUrl = makePublicDownloadUrl(req, fileName);
+    return res.json({ downloadUrl, title, thumbnail, duration });
+  } catch (e) {
+    const details = (e && (e.stderr || e.err?.message || '')) || '';
+    console.error('YouTube download error:', details);
+    return res.status(500).json({
+      error: 'Download Failed',
+      message: 'Could not download this video with the selected settings. Please try again.',
+      details: process.env.NODE_ENV === 'development' ? details : undefined
+    });
+  }
+});
 
 // 1. Download Reel Endpoint (Powered by yt-dlp)
 app.post('/download', async (req, res) => {
