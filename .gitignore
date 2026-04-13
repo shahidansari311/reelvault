@@ -13,6 +13,7 @@ node_modules/
 # 🔑 Secrets & Session Keys
 *instagram_cookies.txt
 backend/instagram_cookies.txt
+backend/youtube_cookies.txt
 auth_token.json
 
 # Expo

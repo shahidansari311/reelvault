@@ -183,9 +183,13 @@ function looksLikeYouTubeSignatureIssue(stderr) {
   );
 }
 
-// 📱 Modern Extractor Args: Using multiple clients to bypass throttling/signature issues
-// 'ios' and 'web' are generally more stable with cookies than 'android'
-const YT_CLIENT_ARGS = ['--extractor-args', 'youtube:player_client=ios,web,mweb'];
+// 📱 YouTube Extraction Strategy:
+// 1. 'tvhtml5' often bypasses the GVS PO Token requirement that blocks 'web'/'mweb'.
+// 2. Added a modern User-Agent to mimic a real browser.
+const YT_CLIENT_ARGS = [
+  '--extractor-args', 'youtube:player_client=tvhtml5,web',
+  '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+];
 
 function buildYoutubeVideoOptions(info) {
   const formats = Array.isArray(info?.formats) ? info.formats : [];
