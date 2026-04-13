@@ -17,6 +17,7 @@
     "expo": "~54.0.33",
     "expo-av": "~16.0.8",
     "expo-clipboard": "~8.0.8",
+    "expo-dev-client": "^55.0.27",
     "expo-file-system": "~19.0.21",
     "expo-linear-gradient": "~15.0.8",
     "expo-media-library": "~18.2.1",

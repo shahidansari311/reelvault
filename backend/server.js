@@ -13,6 +13,10 @@ const COOKIES_LOCAL = path.join(__dirname, 'instagram_cookies.txt');
 const COOKIES_RENDER = '/etc/secrets/instagram_cookies.txt';
 const COOKIES_TMP = '/tmp/instagram_cookies.txt';
 
+const YT_COOKIES_LOCAL = path.join(__dirname, 'youtube_cookies.txt');
+const YT_COOKIES_RENDER = '/etc/secrets/youtube_cookies.txt';
+const YT_COOKIES_TMP = '/tmp/youtube_cookies.txt';
+
 // 🍪 Priority: Writable /tmp File (Copied from Render) > Local File
 if (fs.existsSync(COOKIES_RENDER)) {
   // Copy to a writable directory because yt-dlp tries to save/update cookies on exit
@@ -23,6 +27,15 @@ if (fs.existsSync(COOKIES_RENDER)) {
   }
 }
 const COOKIES_PATH = fs.existsSync(COOKIES_TMP) ? COOKIES_TMP : COOKIES_LOCAL;
+
+if (fs.existsSync(YT_COOKIES_RENDER)) {
+  try {
+    fs.copyFileSync(YT_COOKIES_RENDER, YT_COOKIES_TMP);
+  } catch (e) {
+    console.error('Failed to copy YouTube cookie file to tmp', e);
+  }
+}
+const YT_COOKIES_PATH = fs.existsSync(YT_COOKIES_TMP) ? YT_COOKIES_TMP : YT_COOKIES_LOCAL;
 
 app.use(cors());
 app.use(express.json());
@@ -67,6 +80,8 @@ app.get('/ping', (req, res) => res.status(200).send('pong'));
 
 console.log('🔍 System Check: Cookie Source ->', COOKIES_PATH);
 console.log('📁 Cookie File Exists?', fs.existsSync(COOKIES_PATH) ? 'YES' : 'NO');
+console.log('🔍 YouTube Cookie Source ->', YT_COOKIES_PATH);
+console.log('📁 YouTube Cookie File Exists?', fs.existsSync(YT_COOKIES_PATH) ? 'YES' : 'NO');
 
 function secondsToDuration(seconds) {
   if (!seconds && seconds !== 0) return '';
@@ -116,6 +131,23 @@ function makePublicDownloadUrl(req, fileName) {
   return `${proto}://${host}/youtube/files/${encodeURIComponent(fileName)}`;
 }
 
+function looksLikeFfmpegMissing(stderr) {
+  const s = (stderr || '').toLowerCase();
+  return s.includes('ffmpeg') && (s.includes('not found') || s.includes('ffprobe') || s.includes('not recognized'));
+}
+
+function looksLikeYouTubeBotCheck(stderr) {
+  const s = (stderr || '').toLowerCase();
+  return (
+    s.includes('sign in to confirm') ||
+    s.includes('not a bot') ||
+    s.includes('confirm you') ||
+    s.includes('captcha') ||
+    s.includes('verify that you') ||
+    s.includes('this helps protect our community')
+  );
+}
+
 // YouTube: Fetch Info (yt-dlp)
 app.post('/youtube/info', async (req, res) => {
   const { url } = req.body || {};
@@ -124,7 +156,8 @@ app.post('/youtube/info', async (req, res) => {
   }
 
   try {
-    const { stdout } = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', url.trim()], { timeoutMs: 30000 });
+    const authArgs = fs.existsSync(YT_COOKIES_PATH) ? ['--cookies', YT_COOKIES_PATH] : [];
+    const { stdout } = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', ...authArgs, url.trim()], { timeoutMs: 30000 });
     const info = JSON.parse(stdout.trim());
     return res.json({
       title: info.title || '',
@@ -134,6 +167,13 @@ app.post('/youtube/info', async (req, res) => {
   } catch (e) {
     const details = (e && (e.stderr || e.err?.message || '')) || '';
     console.error('YouTube info error:', details);
+    if (looksLikeYouTubeBotCheck(details)) {
+      return res.status(403).json({
+        error: 'YouTube Requires Sign-in',
+        message: 'YouTube is blocking this server. Add YouTube cookies to the backend (Render Secret: youtube_cookies.txt) and try again.',
+        details: process.env.NODE_ENV === 'development' ? details : undefined
+      });
+    }
     return res.status(500).json({
       error: 'Extraction Failed',
       message: 'Could not fetch YouTube info. Please try again.',
@@ -170,7 +210,8 @@ app.post('/youtube/download', async (req, res) => {
   let thumbnail = '';
   let duration = '';
   try {
-    const { stdout } = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', cleanUrl], { timeoutMs: 30000 });
+    const authArgs = fs.existsSync(YT_COOKIES_PATH) ? ['--cookies', YT_COOKIES_PATH] : [];
+    const { stdout } = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', ...authArgs, cleanUrl], { timeoutMs: 30000 });
     const info = JSON.parse(stdout.trim());
     title = info.title || '';
     thumbnail = info.thumbnail || '';
@@ -182,29 +223,34 @@ app.post('/youtube/download', async (req, res) => {
 
   const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const ext = format === 'mp4' ? 'mp4' : 'mp3';
-  const fileName = `reelvault_youtube_${id}.${ext}`;
+  const baseName = `reelvault_youtube_${id}`;
+  const fileName = `${baseName}.${ext}`;
+  const outputTemplate = path.join(YT_DOWNLOADS_DIR, `${baseName}.%(ext)s`);
   const outputPath = path.join(YT_DOWNLOADS_DIR, fileName);
 
   try {
     const commonArgs = ['--no-playlist', '--no-warnings', '--no-check-certificates', '--geo-bypass'];
+    const authArgs = fs.existsSync(YT_COOKIES_PATH) ? ['--cookies', YT_COOKIES_PATH] : [];
 
     let args;
     if (format === 'mp4') {
       const height = Number(q.replace('p', ''));
       args = [
         ...commonArgs,
+        ...authArgs,
         '-f', `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best`,
         '--merge-output-format', 'mp4',
-        '-o', outputPath,
+        '-o', outputTemplate,
         cleanUrl
       ];
     } else {
       args = [
         ...commonArgs,
+        ...authArgs,
         '-x',
         '--audio-format', 'mp3',
         '--audio-quality', `${q}K`,
-        '-o', outputPath,
+        '-o', outputTemplate,
         cleanUrl
       ];
     }
@@ -212,6 +258,14 @@ app.post('/youtube/download', async (req, res) => {
     await runYtDlp(args, { timeoutMs: 10 * 60 * 1000 });
 
     if (!fs.existsSync(outputPath)) {
+      // Fallback: try to find any file matching the baseName (yt-dlp can vary extension)
+      const candidates = fs.readdirSync(YT_DOWNLOADS_DIR).filter(f => f.startsWith(`${baseName}.`));
+      const picked = candidates.find(f => f.endsWith(`.${ext}`)) || candidates[0];
+      if (picked) {
+        const finalName = picked;
+        const downloadUrl = makePublicDownloadUrl(req, finalName);
+        return res.json({ downloadUrl, title, thumbnail, duration });
+      }
       return res.status(500).json({ error: 'Download Failed', message: 'The file could not be generated.' });
     }
 
@@ -220,6 +274,20 @@ app.post('/youtube/download', async (req, res) => {
   } catch (e) {
     const details = (e && (e.stderr || e.err?.message || '')) || '';
     console.error('YouTube download error:', details);
+    if (looksLikeFfmpegMissing(details)) {
+      return res.status(500).json({
+        error: 'Server Missing ffmpeg',
+        message: 'This server needs ffmpeg to merge MP4 or convert MP3. Install ffmpeg and try again.',
+        details: process.env.NODE_ENV === 'development' ? details : undefined
+      });
+    }
+    if (looksLikeYouTubeBotCheck(details)) {
+      return res.status(403).json({
+        error: 'YouTube Requires Sign-in',
+        message: 'YouTube is blocking this server. Add YouTube cookies to the backend (Render Secret: youtube_cookies.txt) and try again.',
+        details: process.env.NODE_ENV === 'development' ? details : undefined
+      });
+    }
     return res.status(500).json({
       error: 'Download Failed',
       message: 'Could not download this video with the selected settings. Please try again.',
@@ -416,15 +484,20 @@ app.get('/status', (req, res) => {
         solution: 'Execute: pip install yt-dlp'
       });
     }
-    
-    res.json({ 
-      status: 'online', 
-      version: stdout.trim(),
-      authStatus: fs.existsSync(COOKIES_PATH) ? 'Authenticated (File)' : 'Auto-Auth (Warning: Browser auth is disabled on servers)',
-      environment: process.env.NODE_ENV || 'production',
-      nodeVersion: process.version,
-      timestamp: new Date().toISOString(),
-      engine: 'yt-dlp Core'
+
+    exec('ffmpeg -version', (ffErr, ffStdout) => {
+      const ffmpeg = ffErr ? null : (ffStdout || '').split('\n')[0].trim();
+
+      res.json({ 
+        status: 'online', 
+        version: stdout.trim(),
+        ffmpeg: ffmpeg || 'missing',
+        authStatus: fs.existsSync(COOKIES_PATH) ? 'Authenticated (File)' : 'Auto-Auth (Warning: Browser auth is disabled on servers)',
+        environment: process.env.NODE_ENV || 'production',
+        nodeVersion: process.version,
+        timestamp: new Date().toISOString(),
+        engine: 'yt-dlp Core'
+      });
     });
   });
 });

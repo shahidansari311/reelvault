@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 
 import * as MediaLibrary from 'expo-media-library';
 import { Alert, Linking } from 'react-native';
@@ -31,7 +31,8 @@ export const downloadFile = async (url, fileName, onProgress) => {
       fileUri,
       {},
       (downloadProgress) => {
-        const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+        const denom = downloadProgress.totalBytesExpectedToWrite || 0;
+        const progress = denom > 0 ? (downloadProgress.totalBytesWritten / denom) : 0;
         if (onProgress) {
           onProgress(progress);
         }
@@ -44,6 +45,7 @@ export const downloadFile = async (url, fileName, onProgress) => {
     if (!result || result.status !== 200) {
       throw new Error('Download failed');
     }
+    if (onProgress) onProgress(1);
 
     // 5. Save to Media Library (Gallery)
     const asset = await MediaLibrary.createAssetAsync(result.uri);

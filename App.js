@@ -5,10 +5,11 @@ import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { LayoutGrid, Search, Heart } from 'lucide-react-native';
+import { LayoutGrid, Search, Heart, Play } from 'lucide-react-native';
 import HomeScreen from './screens/HomeScreen';
 import ReelDownloaderScreen from './screens/ReelDownloaderScreen';
 import StoryViewerScreen from './screens/StoryViewerScreen';
+import YouTubeDownloaderScreen from './screens/YouTubeDownloaderScreen';
 import { COLORS } from './constants/Theme';
 import api from './services/api';
 
@@ -47,8 +48,12 @@ export default function App() {
     <NavigationContainer theme={MyDarkTheme}>
       <StatusBar style="light" />
       <Tab.Navigator
+        detachInactiveScreens
         screenOptions={({ route }) => ({
           headerShown: false,
+          unmountOnBlur: true,
+          freezeOnBlur: true,
+          lazy: true,
           tabBarStyle: {
             backgroundColor: 'rgba(21, 21, 24, 0.95)',
             borderTopWidth: 0,
@@ -67,6 +72,7 @@ export default function App() {
             let Icon;
             if (route.name === 'Home') Icon = LayoutGrid;
             else if (route.name === 'Reels') Icon = Search;
+            else if (route.name === 'YouTube') Icon = Play;
             else Icon = Heart;
 
             return (
@@ -90,6 +96,7 @@ export default function App() {
       >
         <Tab.Screen name="Home" component={HomeScreen} />
         <Tab.Screen name="Reels" component={ReelDownloaderScreen} />
+        <Tab.Screen name="YouTube" component={YouTubeDownloaderScreen} />
         <Tab.Screen name="Stories" component={StoryViewerScreen} />
       </Tab.Navigator>
     </NavigationContainer>

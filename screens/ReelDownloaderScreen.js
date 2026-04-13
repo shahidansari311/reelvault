@@ -30,7 +30,7 @@ import {
   Shield
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
-import { fetchReelData, fetchYouTubeInfo, requestYouTubeDownload } from '../services/api';
+import { fetchReelData } from '../services/api';
 import { downloadFile } from '../utils/download';
 import { CustomInput } from '../components/CustomInput';
 import { ProgressBar } from '../components/ProgressBar';
@@ -50,15 +50,6 @@ export default function ReelDownloaderScreen({ navigation, route }) {
   const [history, setHistory] = useState([]);
   const [error, setError] = useState(null);
 
-  const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [ytFormat, setYtFormat] = useState('mp4'); // mp4 | mp3
-  const [ytQuality, setYtQuality] = useState('720p'); // mp4: 360p|720p|1080p, mp3: 128|192|320
-  const [ytLoading, setYtLoading] = useState(false);
-  const [ytDownloading, setYtDownloading] = useState(false);
-  const [ytDownloadProgress, setYtDownloadProgress] = useState(0);
-  const [ytInfo, setYtInfo] = useState(null);
-  const [ytError, setYtError] = useState(null);
-
   useEffect(() => {
     if (route.params?.autoPaste) {
       handlePaste();
@@ -72,8 +63,6 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     const text = await Clipboard.getStringAsync();
     if (text.includes('instagram.com/')) {
       setUrl(text);
-    } else if (text.includes('youtube.com/') || text.includes('youtu.be/')) {
-      setYoutubeUrl(text);
     }
   };
 
@@ -106,11 +95,6 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     const isInstagram = text.includes('instagram.com/') || text.includes('instagr.am/');
     if (isInstagram && (text.includes('/reel/') || text.includes('/reels/') || text.includes('/p/'))) {
       setUrl(text);
-      return;
-    }
-    const isYouTube = text.includes('youtube.com/') || text.includes('youtu.be/');
-    if (isYouTube) {
-      setYoutubeUrl(text);
     }
   };
 
@@ -166,114 +150,6 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     }
     setDownloading(false);
     setDownloadProgress(0);
-  };
-
-  const validateYouTubeUrl = (u) => {
-    if (!u) return false;
-    return /(youtube\.com|youtu\.be)\//i.test(u.trim());
-  };
-
-  const handleYtFormatChange = (format) => {
-    setYtFormat(format);
-    setYtError(null);
-    setYtInfo(null);
-    if (format === 'mp4') {
-      setYtQuality('720p');
-    } else {
-      setYtQuality('192');
-    }
-  };
-
-  const handleFetchYouTubeInfo = async () => {
-    if (!validateYouTubeUrl(youtubeUrl)) {
-      Alert.alert('Invalid link', 'Please paste a valid YouTube link.');
-      return;
-    }
-    Keyboard.dismiss();
-    setYtLoading(true);
-    setYtError(null);
-    setYtInfo(null);
-
-    try {
-      const data = await fetchYouTubeInfo(youtubeUrl.trim());
-      setYtInfo(data);
-    } catch (err) {
-      const title = err.response?.data?.error || 'Network Error';
-      const message = err.response?.data?.message || 'Could not fetch video info. Please try again.';
-      setYtError({ title, message });
-    } finally {
-      setYtLoading(false);
-    }
-  };
-
-  const handleDownloadYouTube = async () => {
-    if (!validateYouTubeUrl(youtubeUrl)) {
-      Alert.alert('Invalid link', 'Please paste a valid YouTube link.');
-      return;
-    }
-    if (ytDownloading) return;
-
-    setYtDownloading(true);
-    setYtDownloadProgress(0);
-    setYtError(null);
-
-    const attempt = async () => {
-      const payload = await requestYouTubeDownload({
-        url: youtubeUrl.trim(),
-        format: ytFormat,
-        quality: ytQuality
-      });
-
-      setYtInfo({
-        title: payload.title || ytInfo?.title || '',
-        thumbnail: payload.thumbnail || ytInfo?.thumbnail || '',
-        duration: payload.duration || ytInfo?.duration || ''
-      });
-
-      if (!payload.downloadUrl) {
-        throw new Error('No downloadUrl returned from server');
-      }
-
-      const ext = ytFormat === 'mp3' ? 'mp3' : 'mp4';
-      const fileName = `youtube_${Date.now()}.${ext}`;
-      const success = await downloadFile(
-        payload.downloadUrl,
-        fileName,
-        (progress) => setYtDownloadProgress(progress)
-      );
-
-      if (success) {
-        Alert.alert('Success', `${ytFormat.toUpperCase()} saved to your gallery!`);
-      }
-    };
-
-    try {
-      await attempt();
-    } catch (err) {
-      const title = err.response?.data?.error || 'Download Failed';
-      const message = err.response?.data?.message || err.message || 'Could not download. Please try again.';
-      Alert.alert(title, message, [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Retry',
-          onPress: async () => {
-            try {
-              setYtDownloading(true);
-              setYtDownloadProgress(0);
-              await attempt();
-            } catch (e2) {
-              Alert.alert('Download Failed', e2.response?.data?.message || e2.message || 'Retry failed.');
-            } finally {
-              setYtDownloading(false);
-              setYtDownloadProgress(0);
-            }
-          }
-        }
-      ]);
-    } finally {
-      setYtDownloading(false);
-      setYtDownloadProgress(0);
-    }
   };
 
   const handleShare = async () => {
@@ -433,145 +309,6 @@ export default function ReelDownloaderScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* YouTube Downloader */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>YouTube Downloader</Text>
-          <Text style={styles.sectionSub}>Download YouTube videos as MP4 or MP3 with selectable quality.</Text>
-        </View>
-
-        <View style={styles.extractionCard}>
-          <CustomInput
-            placeholder="Paste YouTube link"
-            value={youtubeUrl}
-            onChangeText={(text) => {
-              setYoutubeUrl(text);
-              setYtError(null);
-            }}
-            onClear={() => setYoutubeUrl('')}
-            icon={LinkIcon}
-            suffix={() => (
-              <TouchableOpacity style={styles.inlinePasteBtn} onPress={handlePaste}>
-                <Text style={styles.pasteBubbleText}>Paste</Text>
-              </TouchableOpacity>
-            )}
-          />
-
-          <View style={styles.optionRow}>
-            <Text style={styles.optionLabel}>Format</Text>
-            <View style={styles.chipRow}>
-              <TouchableOpacity
-                style={[styles.chip, ytFormat === 'mp4' && styles.chipActive]}
-                onPress={() => handleYtFormatChange('mp4')}
-                disabled={ytLoading || ytDownloading}
-              >
-                <Text style={[styles.chipText, ytFormat === 'mp4' && styles.chipTextActive]}>MP4 (Video)</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.chip, ytFormat === 'mp3' && styles.chipActive]}
-                onPress={() => handleYtFormatChange('mp3')}
-                disabled={ytLoading || ytDownloading}
-              >
-                <Text style={[styles.chipText, ytFormat === 'mp3' && styles.chipTextActive]}>MP3 (Audio)</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={styles.optionRow}>
-            <Text style={styles.optionLabel}>Quality</Text>
-            <View style={styles.chipRow}>
-              {ytFormat === 'mp4' ? (
-                <>
-                  {['360p', '720p', '1080p'].map((q) => (
-                    <TouchableOpacity
-                      key={q}
-                      style={[styles.chipSmall, ytQuality === q && styles.chipActive]}
-                      onPress={() => setYtQuality(q)}
-                      disabled={ytLoading || ytDownloading}
-                    >
-                      <Text style={[styles.chipText, ytQuality === q && styles.chipTextActive]}>{q}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </>
-              ) : (
-                <>
-                  {['128', '192', '320'].map((q) => (
-                    <TouchableOpacity
-                      key={q}
-                      style={[styles.chipSmall, ytQuality === q && styles.chipActive]}
-                      onPress={() => setYtQuality(q)}
-                      disabled={ytLoading || ytDownloading}
-                    >
-                      <Text style={[styles.chipText, ytQuality === q && styles.chipTextActive]}>{q} kbps</Text>
-                    </TouchableOpacity>
-                  ))}
-                </>
-              )}
-            </View>
-          </View>
-
-          <View style={styles.dualBtnRow}>
-            <TouchableOpacity
-              style={[styles.secondaryBtn, (ytLoading || ytDownloading) && { opacity: 0.7 }]}
-              onPress={handleFetchYouTubeInfo}
-              disabled={ytLoading || ytDownloading}
-            >
-              {ytLoading ? (
-                <ActivityIndicator color={COLORS.text} size="small" />
-              ) : (
-                <Text style={styles.secondaryBtnText}>Fetch Info</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.fetchBtn, (ytDownloading || ytLoading) && { opacity: 0.7 }]}
-              onPress={handleDownloadYouTube}
-              disabled={ytDownloading || ytLoading}
-            >
-              {ytDownloading ? (
-                <ActivityIndicator color="#000" size="small" />
-              ) : (
-                <Text style={styles.fetchBtnText}>Download</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {ytDownloading && (
-            <View style={{ marginTop: 18 }}>
-              <ProgressBar progress={ytDownloadProgress} label="Downloading..." />
-            </View>
-          )}
-
-          {ytError && (
-            <View style={styles.errorBubble}>
-              <View style={styles.errorIconHeader}>
-                <Shield color="#FF6B6B" size={16} />
-                <Text style={styles.errorTitle}>{ytError.title}</Text>
-              </View>
-              <Text style={styles.errorBody}>{ytError.message}</Text>
-            </View>
-          )}
-        </View>
-
-        {ytInfo && (
-          <View style={styles.previewContainer}>
-            <View style={styles.previewFrame}>
-              {ytInfo.thumbnail ? (
-                <Image source={{ uri: ytInfo.thumbnail }} style={styles.thumbnailImage} />
-              ) : (
-                <View style={styles.thumbnailPlaceholder}>
-                  <Play color={COLORS.text} size={40} />
-                </View>
-              )}
-            </View>
-
-            <View style={styles.metaCard}>
-              <Text style={styles.metaTitle}>{ytInfo.title || 'YouTube Video'}</Text>
-              {!!ytInfo.duration && (
-                <Text style={styles.metaSubtitle}>Duration: {ytInfo.duration}</Text>
-              )}
-            </View>
-          </View>
-        )}
       </ScrollView>
     </LinearGradient>
   );
@@ -803,99 +540,4 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
-  sectionHeader: {
-    marginTop: 20,
-    marginBottom: 18,
-  },
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: 0.4,
-  },
-  sectionSub: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    marginTop: 6,
-    lineHeight: 20,
-    opacity: 0.85,
-  },
-  optionRow: {
-    marginTop: 6,
-    marginBottom: 16,
-  },
-  optionLabel: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 10,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  chip: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-  },
-  chipSmall: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-  },
-  chipActive: {
-    backgroundColor: 'rgba(180, 185, 255, 0.18)',
-    borderColor: 'rgba(180, 185, 255, 0.35)',
-  },
-  chipText: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  chipTextActive: {
-    color: COLORS.text,
-  },
-  dualBtnRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 8,
-  },
-  secondaryBtn: {
-    flex: 1,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  secondaryBtnText: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  metaSubtitle: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    marginTop: 8,
-    opacity: 0.9,
-    textAlign: 'center',
-  },
-  thumbnailImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
 });
