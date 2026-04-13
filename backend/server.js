@@ -184,9 +184,12 @@ function looksLikeYouTubeSignatureIssue(stderr) {
 }
 
 // 📱 YouTube Extraction Strategy:
-// Using 'tv,android' clients and a standard User-Agent to ensure compatibility.
+// 1. 'web_embedded' and 'tv' currently offer the best bypass for datacenter blocks.
+// 2. '--force-ipv4' helps bypass blocks often applied to datacenter IPv6 ranges.
 const YT_CLIENT_ARGS = [
-  '--extractor-args', 'youtube:player_client=tv,android',
+  '--extractor-args', 'youtube:player_client=web_embedded,tv',
+  '--force-ipv4',
+  '--geo-bypass',
   '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
 ];
 
@@ -344,10 +347,10 @@ app.post('/youtube/download', async (req, res) => {
 
     let args;
     if (dlKind === 'video') {
-      let formatStr = 'bv*[ext=mp4]+ba/best[ext=mp4]/best';
+      let formatStr = 'bestvideo+bestaudio/best';
       if (dlMaxHeight !== null && dlMaxHeight !== undefined) {
         const h = Number(dlMaxHeight);
-        formatStr = `bv*[height<=${h}][ext=mp4]+ba/best[height<=${h}][ext=mp4]/best[height<=${h}]/bv*+ba/best`;
+        formatStr = `bestvideo[height<=${h}]+bestaudio/best[height<=${h}]/bestvideo+bestaudio/best`;
       }
       args = [
         ...commonArgs,

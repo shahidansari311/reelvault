@@ -44,7 +44,7 @@ A premium link-based media saver built with React Native and Expo. Save your fav
 
 ## ⚙️ Backend Setup (Free)
 
-The backend is built with Node.js and can be deployed for free on platforms like [Render](https://render.com) or [Railway](https://railway.app).
+The backend is built with Node.js and can be deployed for free on platforms like [Render](https://render.com)
 
 1. **Install backend dependencies**:
    ```bash
