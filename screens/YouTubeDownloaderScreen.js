@@ -33,6 +33,7 @@ export default function YouTubeDownloaderScreen({ navigation }) {
   const [ytDownloadProgress, setYtDownloadProgress] = useState(0);
   const [ytInfo, setYtInfo] = useState(null);
   const [ytError, setYtError] = useState(null);
+  const [availableMp4Qualities, setAvailableMp4Qualities] = useState(null);
 
   const validateYouTubeUrl = (u) => /(youtube\.com|youtu\.be)\//i.test((u || '').trim());
 
@@ -50,6 +51,7 @@ export default function YouTubeDownloaderScreen({ navigation }) {
     setYtFormat(format);
     setYtError(null);
     setYtInfo(null);
+    setAvailableMp4Qualities(null);
     setYtQuality(format === 'mp4' ? '720p' : '192');
   };
 
@@ -66,6 +68,14 @@ export default function YouTubeDownloaderScreen({ navigation }) {
     try {
       const data = await fetchYouTubeInfo(youtubeUrl.trim());
       setYtInfo(data);
+      const avail = Array.isArray(data?.availableMp4Qualities) ? data.availableMp4Qualities : null;
+      setAvailableMp4Qualities(avail);
+      if (ytFormat === 'mp4' && avail?.length) {
+        // Keep current if valid; otherwise pick best available.
+        if (!avail.includes(ytQuality)) {
+          setYtQuality(avail.includes('1080p') ? '1080p' : (avail.includes('720p') ? '720p' : avail[0]));
+        }
+      }
     } catch (err) {
       const title = err.response?.data?.error || 'Network Error';
       const message = err.response?.data?.message || 'Could not fetch video info. Please try again.';
@@ -217,16 +227,32 @@ export default function YouTubeDownloaderScreen({ navigation }) {
             <Text style={styles.optionLabel}>Quality</Text>
             <View style={styles.chipRow}>
               {ytFormat === 'mp4'
-                ? ['360p', '720p', '1080p'].map((q) => (
+                ? ['360p', '720p', '1080p'].map((q) => {
+                    const enabled = !availableMp4Qualities || availableMp4Qualities.includes(q);
+                    const active = ytQuality === q;
+                    return (
                     <TouchableOpacity
                       key={q}
-                      style={[styles.chipSmall, ytQuality === q && styles.chipActive]}
-                      onPress={() => setYtQuality(q)}
+                      style={[
+                        styles.chipSmall,
+                        active && styles.chipActive,
+                        !enabled && styles.chipDisabled,
+                      ]}
+                      onPress={() => enabled && setYtQuality(q)}
                       disabled={ytLoading || ytDownloading}
                     >
-                      <Text style={[styles.chipText, ytQuality === q && styles.chipTextActive]}>{q}</Text>
+                      <Text
+                        style={[
+                          styles.chipText,
+                          active && styles.chipTextActive,
+                          !enabled && styles.chipTextDisabled,
+                        ]}
+                      >
+                        {q}
+                      </Text>
                     </TouchableOpacity>
-                  ))
+                  );
+                  })
                 : ['128', '192', '320'].map((q) => (
                     <TouchableOpacity
                       key={q}
@@ -399,6 +425,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(180, 185, 255, 0.18)',
     borderColor: 'rgba(180, 185, 255, 0.35)',
   },
+  chipDisabled: {
+    opacity: 0.35,
+  },
   chipText: {
     color: COLORS.textSecondary,
     fontSize: 13,
@@ -406,6 +435,9 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: COLORS.text,
+  },
+  chipTextDisabled: {
+    color: 'rgba(255,255,255,0.35)',
   },
   dualBtnRow: {
     flexDirection: 'row',

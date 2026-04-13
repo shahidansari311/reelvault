@@ -148,6 +148,46 @@ function looksLikeYouTubeBotCheck(stderr) {
   );
 }
 
+function pickAvailableMp4Qualities(info) {
+  const allowed = [360, 720, 1080];
+  const heights = new Set();
+  const formats = Array.isArray(info?.formats) ? info.formats : [];
+  for (const f of formats) {
+    const h = Number(f?.height);
+    if (!h || !Number.isFinite(h)) continue;
+    // Only consider formats that contain video
+    if (f?.vcodec && f.vcodec !== 'none') {
+      heights.add(h);
+    }
+  }
+  const available = allowed.filter((a) => Array.from(heights).some((h) => h === a || h > a));
+  // If video has only e.g. 480p, reflect that by enabling 360p only.
+  if (available.length === 0) {
+    const maxH = Math.max(0, ...Array.from(heights));
+    if (maxH > 0) {
+      return allowed.filter((a) => a <= maxH).map((h) => `${h}p`);
+    }
+  }
+  return available.map((h) => `${h}p`);
+}
+
+function resolveHeightForRequest(requestedHeight, info) {
+  const formats = Array.isArray(info?.formats) ? info.formats : [];
+  const videoHeights = Array.from(
+    new Set(
+      formats
+        .map((f) => Number(f?.height))
+        .filter((h) => Number.isFinite(h) && h > 0)
+    )
+  ).sort((a, b) => a - b);
+
+  if (!videoHeights.length) return requestedHeight;
+
+  // Pick highest height <= requested; if none, pick the lowest available.
+  const bestUnder = videoHeights.filter((h) => h <= requestedHeight).pop();
+  return bestUnder || videoHeights[0];
+}
+
 // YouTube: Fetch Info (yt-dlp)
 app.post('/youtube/info', async (req, res) => {
   const { url } = req.body || {};
@@ -162,7 +202,8 @@ app.post('/youtube/info', async (req, res) => {
     return res.json({
       title: info.title || '',
       thumbnail: info.thumbnail || '',
-      duration: info.duration_string || secondsToDuration(info.duration)
+      duration: info.duration_string || secondsToDuration(info.duration),
+      availableMp4Qualities: pickAvailableMp4Qualities(info),
     });
   } catch (e) {
     const details = (e && (e.stderr || e.err?.message || '')) || '';
@@ -209,10 +250,12 @@ app.post('/youtube/download', async (req, res) => {
   let title = '';
   let thumbnail = '';
   let duration = '';
+  let infoJson = null;
   try {
     const authArgs = fs.existsSync(YT_COOKIES_PATH) ? ['--cookies', YT_COOKIES_PATH] : [];
     const { stdout } = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', ...authArgs, cleanUrl], { timeoutMs: 30000 });
     const info = JSON.parse(stdout.trim());
+    infoJson = info;
     title = info.title || '';
     thumbnail = info.thumbnail || '';
     duration = info.duration_string || secondsToDuration(info.duration);
@@ -234,11 +277,12 @@ app.post('/youtube/download', async (req, res) => {
 
     let args;
     if (format === 'mp4') {
-      const height = Number(q.replace('p', ''));
+      const requested = Number(q.replace('p', ''));
+      const height = infoJson ? resolveHeightForRequest(requested, infoJson) : requested;
       args = [
         ...commonArgs,
         ...authArgs,
-        '-f', `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best`,
+        '-f', `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best/bestvideo+bestaudio/best`,
         '--merge-output-format', 'mp4',
         '-o', outputTemplate,
         cleanUrl

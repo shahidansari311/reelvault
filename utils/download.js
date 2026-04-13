@@ -1,4 +1,5 @@
-import * as FileSystem from 'expo-file-system';
+// SDK 54+: createDownloadResumable lives on the legacy API; main entry throws if used from non-legacy import.
+import * as FileSystem from 'expo-file-system/legacy';
 
 import * as MediaLibrary from 'expo-media-library';
 import { Alert, Linking } from 'react-native';
