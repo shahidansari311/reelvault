@@ -1,13 +1,16 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
+
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { LayoutGrid, Search, Heart, User } from 'lucide-react-native';
+import { LayoutGrid, Search, Heart } from 'lucide-react-native';
 import HomeScreen from './screens/HomeScreen';
 import ReelDownloaderScreen from './screens/ReelDownloaderScreen';
 import StoryViewerScreen from './screens/StoryViewerScreen';
 import { COLORS } from './constants/Theme';
+import api from './services/api';
 
 const Tab = createBottomTabNavigator();
 
@@ -24,6 +27,22 @@ const MyDarkTheme = {
 };
 
 export default function App() {
+  useEffect(() => {
+    const keepAlive = setInterval(async () => {
+      try {
+        // Ping the root or a dedicated health endpoint
+        await api.get('/'); 
+        console.log('Keep-alive ping sent');
+      } catch (e) {
+        // Even if it errors (e.g. 404), it wakes up the server
+        console.log('Keep-alive ping completed');
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => clearInterval(keepAlive);
+  }, []);
+
+
   return (
     <NavigationContainer theme={MyDarkTheme}>
       <StatusBar style="light" />

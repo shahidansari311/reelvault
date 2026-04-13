@@ -1,21 +1,58 @@
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Replace with your actual backend URL
-// 🌐 Dynamic Backend URL (Expo Environment Variable)
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.5:5000'; // Fallback to local IP for physical devices
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.5:5000';
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 45000, // Increased timeout to 45s since video extraction takes time
+  timeout: 45000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
+const CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes
+
+const getCache = async (key) => {
+  try {
+    const cached = await AsyncStorage.getItem(key);
+    if (!cached) return null;
+    const { data, timestamp } = JSON.parse(cached);
+    if (Date.now() - timestamp > CACHE_EXPIRY) {
+      await AsyncStorage.removeItem(key);
+      return null;
+    }
+    return data;
+  } catch (e) {
+    return null;
+  }
+};
+
+const setCache = async (key, data) => {
+  try {
+    const cacheData = JSON.stringify({ data, timestamp: Date.now() });
+    await AsyncStorage.setItem(key, cacheData);
+  } catch (e) {}
+};
+
+export const getProxyUrl = (originalUrl) => {
+  if (!originalUrl || originalUrl.includes('/proxy?url=')) return originalUrl;
+  return `${API_URL}/proxy?url=${encodeURIComponent(originalUrl)}`;
+};
+
 export const fetchReelData = async (reelUrl) => {
+  const cacheKey = `reel_${reelUrl}`;
+  const cached = await getCache(cacheKey);
+  if (cached) return cached;
+
   try {
     const response = await api.post('/download', { reelUrl });
-    return response.data;
+    const data = {
+      ...response.data,
+      videoUrl: getProxyUrl(response.data.videoUrl)
+    };
+    await setCache(cacheKey, data);
+    return data;
   } catch (error) {
     console.error('Error fetching reel:', error);
     throw error;
@@ -23,13 +60,25 @@ export const fetchReelData = async (reelUrl) => {
 };
 
 export const fetchStories = async (username) => {
+  const cacheKey = `stories_${username}`;
+  const cached = await getCache(cacheKey);
+  if (cached) return cached;
+
   try {
     const response = await api.get(`/stories/${username}`);
-    return response.data;
+    const data = response.data.map(item => ({
+      ...item,
+      url: getProxyUrl(item.url),
+      thumbnail: getProxyUrl(item.thumbnail)
+    }));
+    await setCache(cacheKey, data);
+    return data;
   } catch (error) {
     console.error('Error fetching stories:', error);
     throw error;
   }
 };
 
+
 export default api;
+

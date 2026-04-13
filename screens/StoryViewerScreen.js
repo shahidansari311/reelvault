@@ -4,12 +4,13 @@ import {
   View, 
   Text, 
   TouchableOpacity, 
-  ScrollView, 
-  Image,
   Dimensions,
   Alert,
   Modal,
+  Image,
+  FlatList,
 } from 'react-native';
+
 import { LinearGradient } from 'expo-linear-gradient';
 import { Video } from 'expo-av';
 import { useIsFocused } from '@react-navigation/native';
@@ -21,22 +22,60 @@ import {
   Shield, 
   Download, 
   Play, 
-  History, 
   TrendingUp,
   Eye,
-  CheckCircle2
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 import { fetchStories, fetchReelData } from '../services/api';
 import { downloadFile } from '../utils/download';
 import { CustomInput } from '../components/CustomInput';
+import { ProgressBar } from '../components/ProgressBar';
 
 const { width, height } = Dimensions.get('window');
+
+const StoryItem = React.memo(({ item, onPress, disabled }) => (
+  <TouchableOpacity 
+    style={styles.storyPreviewCard}
+    onPress={() => onPress(item)}
+    disabled={disabled}
+  >
+    {item.type === 'video' ? (
+      <View style={styles.videoPreviewContainer}>
+        <Image 
+          source={{ uri: item.thumbnail || item.url }} 
+          style={styles.storyThumb} 
+          resizeMode="cover"
+        />
+        <View style={styles.playOverlay}>
+          <Play color={COLORS.primary} size={32} />
+        </View>
+      </View>
+    ) : (
+      <Image 
+        source={{ uri: item.url }} 
+        style={styles.storyThumb} 
+        resizeMode="cover"
+      />
+
+    )}
+    <View style={styles.typeBadge}>
+      {item.type === 'video' ? (
+        <Play color="#FFF" size={10} style={{ marginRight: 4 }} />
+      ) : (
+        <Eye color="#FFF" size={10} style={{ marginRight: 4 }} />
+      )}
+      <Text style={styles.typeText}>{item.type.toUpperCase()}</Text>
+    </View>
+  </TouchableOpacity>
+));
 
 export default function StoryViewerScreen({ navigation }) {
   const isFocused = useIsFocused();
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fetchProgress, setFetchProgress] = useState(0);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const [stories, setStories] = useState([]);
   const [error, setError] = useState(null);
   const [searchType, setSearchType] = useState('profile'); // 'profile' or 'link'
@@ -45,6 +84,7 @@ export default function StoryViewerScreen({ navigation }) {
   const handleFetch = async () => {
     if (!username) return;
     setLoading(true);
+    setFetchProgress(0);
     setError(null);
     setStories([]);
 
@@ -67,44 +107,168 @@ export default function StoryViewerScreen({ navigation }) {
     
     target = target.replace('@', '').split('?')[0];
 
+    // Simulated progress
+    const interval = setInterval(() => {
+      setFetchProgress(prev => (prev < 0.9 ? prev + 0.1 : prev));
+    }, 400);
+
     try {
+      let results = [];
       if (isReel) {
         const data = await fetchReelData(username.trim());
-        setStories([{
+        results = [{
           type: 'video',
           url: data.videoUrl,
           thumbnail: data.videoUrl,
           title: data.title
-        }]);
+        }];
       } else {
         const data = await fetchStories(target);
         if (data && data.length > 0) {
-          setStories(data);
+          results = data;
         } else {
-          setError({ 
-            title: 'No Stories Found', 
-            message: 'This user hasn\'t posted any stories recently.' 
-          });
+          throw new Error('Private profiles or no active stories found');
         }
       }
+
+      clearInterval(interval);
+      setFetchProgress(1);
+      setTimeout(() => {
+        setStories(results);
+        setLoading(false);
+      }, 500);
+
     } catch (err) {
-      const errorTitle = err.response?.data?.error || 'Extraction Failed';
-      const errorMsg = err.response?.data?.message || 'We couldn\'t resolve this link. It might be private or broken.';
-      setError({ title: errorTitle, message: errorMsg });
-    } finally {
+      clearInterval(interval);
+      setError({ 
+        title: 'Extraction Failed', 
+        message: err.message || 'The user is private or the profile is inaccessible.' 
+      });
       setLoading(false);
     }
   };
 
+
   const handleDownload = async (item) => {
     if (!item) return;
-    setLoading(true);
-    const success = await downloadFile(item.url, `story_${Date.now()}.${item.type === 'video' ? 'mp4' : 'jpg'}`);
-    setLoading(false);
-    if (success) {
-      Alert.alert('Archive Success', 'Media saved to your high-fidelity vault.');
-    }
+    setDownloading(true);
+    setDownloadProgress(0);
+    const fileName = `story_${Date.now()}.${item.type === 'video' ? 'mp4' : 'jpg'}`;
+    const success = await downloadFile(item.url, fileName, (p) => setDownloadProgress(p));
+    setDownloading(false);
+    setDownloadProgress(0);
+    if (success) Alert.alert('Archive Success', 'Media saved to your vault.');
   };
+
+  const renderHeader = () => (
+    <>
+      <View style={styles.toggleGrid}>
+        <TouchableOpacity 
+          style={[styles.toggleBtn, searchType === 'profile' && styles.toggleBtnActive]}
+          onPress={() => setSearchType('profile')}
+        >
+          <User color={searchType === 'profile' ? '#000' : COLORS.textSecondary} size={18} />
+          <Text style={[styles.toggleText, searchType === 'profile' && styles.toggleTextActive]}>BY USER</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.toggleBtn, searchType === 'link' && styles.toggleBtnActive]}
+          onPress={() => setSearchType('link')}
+        >
+          <Globe color={searchType === 'link' ? '#000' : COLORS.textSecondary} size={18} />
+          <Text style={[styles.toggleText, searchType === 'link' && styles.toggleTextActive]}>BY LINK</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.heroSection}>
+        <Text style={styles.heroTitle}>
+          {searchType === 'profile' ? 'Profile Search' : 'Link Resolver'}
+        </Text>
+        <Text style={styles.heroSub}>
+          {searchType === 'profile' 
+            ? 'Enter any public username to curate active stories into your archive.'
+            : 'Paste a direct story link to resolve and download high-fidelity media.'}
+        </Text>
+      </View>
+
+      <View style={styles.extractionCard}>
+        <CustomInput
+          placeholder={searchType === 'profile' ? "beingrimi_, cristiano..." : "Paste Instagram Story Link"}
+          value={username}
+          onChangeText={(text) => {
+            setUsername(text);
+            setError(null);
+            const cleanText = text.trim();
+            if (cleanText.includes('instagram.com') || cleanText.includes('http')) {
+              if (searchType !== 'link') setSearchType('link');
+            } else if (cleanText.length > 0 && !cleanText.includes('/') && !cleanText.includes(' ')) {
+              if (searchType !== 'profile') setSearchType('profile');
+            }
+          }}
+          onClear={() => {
+            setUsername('');
+            setError(null);
+          }}
+          icon={searchType === 'profile' ? User : Globe}
+          suffix={() => (
+            <TouchableOpacity 
+              style={styles.inlinePasteBtn} 
+              onPress={async () => {
+                const text = await Clipboard.getStringAsync();
+                const cleanText = text.trim();
+                setUsername(cleanText);
+                setError(null);
+                if (cleanText.includes('instagram.com') || cleanText.includes('http')) {
+                  setSearchType('link');
+                } else if (cleanText.length > 0 && !cleanText.includes('/') && !cleanText.includes(' ')) {
+                  setSearchType('profile');
+                }
+              }}
+            >
+              <Text style={styles.pasteBubbleText}>Paste</Text>
+            </TouchableOpacity>
+          )}
+        />
+        
+        <TouchableOpacity 
+          style={[styles.fetchBtn, loading && { opacity: 0.7 }]} 
+          onPress={handleFetch}
+          disabled={loading}
+        >
+          <Text style={styles.fetchBtnText}>
+            {loading ? 'EXTRACTING...' : (searchType === 'profile' ? 'GET STORIES' : 'EXTRACT MEDIA')}
+          </Text>
+        </TouchableOpacity>
+
+        {loading && (
+          <View style={{ marginTop: 20 }}>
+            <ProgressBar progress={fetchProgress} label="Extracting Data" />
+          </View>
+        )}
+
+        
+        {error && (
+          <View style={styles.errorBubble}>
+            <View style={styles.errorIconHeader}>
+              <Shield color="#FF6B6B" size={16} />
+              <Text style={styles.errorTitle}>{error.title}</Text>
+            </View>
+            <Text style={styles.errorBody}>{error.message}</Text>
+          </View>
+        )}
+
+        <Text style={styles.privacyNote}>
+          * Archive integrity is maintained. Private profiles remain restricted.
+        </Text>
+      </View>
+    </>
+  );
+
+  const renderEmpty = () => !loading && (
+    <View style={styles.emptyContainer}>
+      <TrendingUp color={COLORS.textSecondary} size={40} style={{ opacity: 0.3 }} />
+      <Text style={styles.emptyText}>History remains silent. Start your first extraction.</Text>
+    </View>
+  );
 
   return (
     <LinearGradient 
@@ -117,7 +281,6 @@ export default function StoryViewerScreen({ navigation }) {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       />
-      {/* Navbar */}
       <View style={styles.navbar}>
         <TouchableOpacity 
           style={styles.backButton}
@@ -131,162 +294,45 @@ export default function StoryViewerScreen({ navigation }) {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 150 }}>
-        {/* Toggle Grid */}
-        <View style={styles.toggleGrid}>
-          <TouchableOpacity 
-            style={[styles.toggleBtn, searchType === 'profile' && styles.toggleBtnActive]}
-            onPress={() => setSearchType('profile')}
-          >
-            <User color={searchType === 'profile' ? '#000' : COLORS.textSecondary} size={18} />
-            <Text style={[styles.toggleText, searchType === 'profile' && styles.toggleTextActive]}>BY USER</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.toggleBtn, searchType === 'link' && styles.toggleBtnActive]}
-            onPress={() => setSearchType('link')}
-          >
-            <Globe color={searchType === 'link' ? '#000' : COLORS.textSecondary} size={18} />
-            <Text style={[styles.toggleText, searchType === 'link' && styles.toggleTextActive]}>BY LINK</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Hero Section */}
-        <View style={styles.heroSection}>
-          <Text style={styles.heroTitle}>
-            {searchType === 'profile' ? 'Profile Search' : 'Link Resolver'}
-          </Text>
-          <Text style={styles.heroSub}>
-            {searchType === 'profile' 
-              ? 'Enter any public username to curate active stories into your archive.'
-              : 'Paste a direct story link to resolve and download high-fidelity media.'}
-          </Text>
-        </View>
-
-        {/* Search Bubble */}
-        <View style={styles.extractionCard}>
-          <CustomInput
-            placeholder={searchType === 'profile' ? "beingrimi_, cristiano..." : "Paste Instagram Story Link"}
-            value={username}
-            onChangeText={(text) => {
-              setUsername(text);
-              setError(null);
-              
-              const cleanText = text.trim();
-              if (cleanText.includes('instagram.com') || cleanText.includes('http')) {
-                if (searchType !== 'link') setSearchType('link');
-              } else if (cleanText.length > 0 && !cleanText.includes('/') && !cleanText.includes(' ')) {
-                if (searchType !== 'profile') setSearchType('profile');
-              }
-            }}
-            onClear={() => {
-              setUsername('');
-              setError(null);
-            }}
-            icon={searchType === 'profile' ? User : Globe}
-            suffix={() => (
-              <TouchableOpacity 
-                style={styles.inlinePasteBtn} 
-                 onPress={async () => {
-                   const text = await Clipboard.getStringAsync();
-                   const cleanText = text.trim();
-                   setUsername(cleanText);
-                   setError(null);
- 
-                   if (cleanText.includes('instagram.com') || cleanText.includes('http')) {
-                     setSearchType('link');
-                   } else if (cleanText.length > 0 && !cleanText.includes('/') && !cleanText.includes(' ')) {
-                     setSearchType('profile');
-                   }
-                 }}
-              >
-                <Text style={styles.pasteBubbleText}>Paste</Text>
-              </TouchableOpacity>
-            )}
+      <FlatList
+        data={stories}
+        keyExtractor={(item, index) => `${index}-${item.url}`}
+        numColumns={2}
+        columnWrapperStyle={styles.columnWrapper}
+        ListHeaderComponent={renderHeader}
+        ListEmptyComponent={renderEmpty}
+        renderItem={({ item }) => (
+          <StoryItem 
+            item={item} 
+            onPress={setSelectedStory} 
+            disabled={downloading} 
           />
-          
-          <TouchableOpacity 
-            style={[styles.fetchBtn, loading && { opacity: 0.7 }]} 
-            onPress={handleFetch}
-            disabled={loading}
-          >
-            <Text style={styles.fetchBtnText}>
-              {loading ? 'Resolving Universe...' : (searchType === 'profile' ? 'GET STORIES' : 'EXTRACT MEDIA')}
-            </Text>
-          </TouchableOpacity>
-          
-          {error && (
-            <View style={styles.errorBubble}>
-              <View style={styles.errorIconHeader}>
-                <Shield color="#FF6B6B" size={16} />
-                <Text style={styles.errorTitle}>{error.title}</Text>
-              </View>
-              <Text style={styles.errorBody}>{error.message}</Text>
-            </View>
-          )}
- 
-          <Text style={styles.privacyNote}>
-            * Archive integrity is maintained. Private profiles remain restricted.
-          </Text>
-        </View>
- 
-        <View style={styles.storyGrid}>
-          {stories.map((item, index) => (
-            <TouchableOpacity 
-              key={index} 
-              style={styles.storyPreviewCard}
-              onPress={() => setSelectedStory(item)}
-            >
-              {item.type === 'video' ? (
-                <View style={styles.videoPreviewContainer}>
-                  <Image 
-                    source={{ uri: item.thumbnail || item.url }} 
-                    style={styles.storyThumb} 
-                    blurRadius={10} 
-                  />
-                  <View style={styles.playOverlay}>
-                    <Play color={COLORS.primary} size={32} />
-                  </View>
-                </View>
-              ) : (
-                <Image source={{ uri: item.url }} style={styles.storyThumb} />
-              )}
-              <View style={styles.typeBadge}>
-                {item.type === 'video' ? (
-                  <Play color="#FFF" size={10} style={{ marginRight: 4 }} />
-                ) : (
-                  <Eye color="#FFF" size={10} style={{ marginRight: 4 }} />
-                )}
-                <Text style={styles.typeText}>{item.type.toUpperCase()}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-          
-          {stories.length === 0 && !loading && (
-            <View style={styles.emptyContainer}>
-              <TrendingUp color={COLORS.textSecondary} size={40} style={{ opacity: 0.3 }} />
-              <Text style={styles.emptyText}>History remains silent. Start your first extraction.</Text>
-            </View>
-          )}
-        </View>
-      </ScrollView>
- 
+        )}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 150 }}
+      />
+
+
+
       <Modal
         visible={!!selectedStory}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setSelectedStory(null)}
+        onRequestClose={() => !downloading && setSelectedStory(null)}
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.playerContainer}>
             {selectedStory?.type === 'video' ? (
               <Video
+                key={selectedStory.url} // Force fresh play instance
                 source={{ uri: selectedStory.url }}
                 rate={1.0}
                 volume={1.0}
                 isMuted={false}
-                resizeMode="cover"
-                shouldPlay={isFocused}
+                resizeMode="contain"
+                shouldPlay={isFocused && !!selectedStory && !downloading}
                 isLooping
+                useNativeControls={!downloading}
                 style={styles.fullScreenPlayer}
               />
             ) : (
@@ -296,27 +342,43 @@ export default function StoryViewerScreen({ navigation }) {
                 resizeMode="contain"
               />
             )}
- 
+
+
+            {downloading && (
+              <View style={styles.modalProgressContainer}>
+                <ProgressBar progress={downloadProgress} label="Saving to Vault" />
+              </View>
+            )}
+
             <View style={styles.modalControls}>
               <TouchableOpacity 
-                style={styles.modalCloseBtn}
-                onPress={() => setSelectedStory(null)}
+                style={[styles.modalCloseBtn, downloading && { opacity: 0.5 }]}
+                onPress={() => !downloading && setSelectedStory(null)}
+                disabled={downloading}
               >
                 <ArrowLeft color="#FFF" size={24} />
               </TouchableOpacity>
- 
+
               <TouchableOpacity 
-                style={styles.modalDownloadBtn}
+                style={[styles.modalDownloadBtn, downloading && { opacity: 0.7, backgroundColor: COLORS.textSecondary }]}
                 onPress={() => handleDownload(selectedStory)}
+                disabled={downloading}
               >
-                <Download color="#000" size={24} />
-                <Text style={styles.modalDownloadText}>SAVE TO VAULT</Text>
+                {downloading ? (
+                  <ActivityIndicator color="#000" size="small" style={{ marginRight: 10 }} />
+                ) : (
+                  <Download color="#000" size={24} style={{ marginRight: 10 }} />
+                )}
+                <Text style={styles.modalDownloadText}>
+                  {downloading ? `SAVING ${Math.round(downloadProgress * 100)}%` : 'SAVE TO VAULT'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
     </LinearGradient>
+
   );
 }
 
@@ -575,4 +637,19 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     letterSpacing: 1,
   },
+  modalProgressContainer: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    right: 20,
+    zIndex: 10,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 10,
+    borderRadius: 15,
+  },
+  columnWrapper: {
+    justifyContent: 'space-between',
+  },
 });
+
+

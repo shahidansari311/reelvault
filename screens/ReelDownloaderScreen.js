@@ -32,18 +32,20 @@ import {
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 import { fetchReelData } from '../services/api';
 import { downloadFile } from '../utils/download';
-import { CustomButton } from '../components/CustomButton';
 import { CustomInput } from '../components/CustomInput';
-
+import { ProgressBar } from '../components/ProgressBar';
 import { useIsFocused } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
 export default function ReelDownloaderScreen({ navigation, route }) {
   const isFocused = useIsFocused();
+
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fetchProgress, setFetchProgress] = useState(0);
   const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const [reelData, setReelData] = useState(null);
   const [history, setHistory] = useState([]);
   const [error, setError] = useState(null);
@@ -61,7 +63,6 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     const text = await Clipboard.getStringAsync();
     if (text.includes('instagram.com/')) {
       setUrl(text);
-      // Optional: automatically trigger handleFetch() if you want it even faster
     }
   };
 
@@ -101,32 +102,54 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     if (!url) return;
     Keyboard.dismiss();
     setLoading(true);
+    setFetchProgress(0);
     setReelData(null);
+    setError(null);
+
+    // Simulated progress for extraction
+    const interval = setInterval(() => {
+      setFetchProgress(prev => {
+        if (prev >= 0.9) return prev;
+        return prev + 0.1;
+      });
+    }, 400);
 
     try {
       const data = await fetchReelData(url);
-      setReelData(data);
-      saveToHistory({ ...data, date: new Date().toISOString(), originalUrl: url });
+      clearInterval(interval);
+      setFetchProgress(1);
+      setTimeout(() => {
+        setReelData(data);
+        saveToHistory({ ...data, date: new Date().toISOString(), originalUrl: url });
+        setLoading(false);
+      }, 500);
     } catch (err) {
+      clearInterval(interval);
       const errorTitle = err.response?.data?.error || 'Broken Link';
       const errorMsg = err.response?.data?.message || 'This video could not be found. Please check the link and try again.';
       setError({ title: errorTitle, message: errorMsg });
-    } finally {
       setLoading(false);
     }
   };
 
+
   const handleDownload = async () => {
     if (!reelData?.videoUrl) return;
     setDownloading(true);
+    setDownloadProgress(0);
     
-    const fileName = `ReelVault_${Date.now()}.mp4`;
-    const success = await downloadFile(reelData.videoUrl, fileName);
+    const fileName = `reel_${Date.now()}.mp4`;
+    const success = await downloadFile(
+      reelData.videoUrl, 
+      fileName, 
+      (progress) => setDownloadProgress(progress)
+    );
     
     if (success) {
       Alert.alert('Success', 'Video saved to your gallery!');
     }
     setDownloading(false);
+    setDownloadProgress(0);
   };
 
   const handleShare = async () => {
@@ -163,7 +186,11 @@ export default function ReelDownloaderScreen({ navigation, route }) {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 150 }}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={{ paddingBottom: 150 }}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Title Section */}
         <View style={styles.heroSection}>
           <Text style={styles.heroTitle}>
@@ -197,8 +224,18 @@ export default function ReelDownloaderScreen({ navigation, route }) {
             onPress={handleFetch}
             disabled={loading}
           >
-            <Text style={styles.fetchBtnText}>{loading ? 'Resolving Archive...' : 'EXTRACT MEDIA'}</Text>
+            {loading ? (
+              <ActivityIndicator color="#000" size="small" />
+            ) : (
+              <Text style={styles.fetchBtnText}>EXTRACT MEDIA</Text>
+            )}
           </TouchableOpacity>
+
+          {loading && (
+            <View style={{ marginTop: 24 }}>
+              <ProgressBar progress={fetchProgress} label="Extracting Reel" />
+            </View>
+          )}
 
           {error && (
             <View style={styles.errorBubble}>
@@ -211,21 +248,24 @@ export default function ReelDownloaderScreen({ navigation, route }) {
           )}
         </View>
 
+
+
         {/* Preview & Metadata */}
         {reelData && (
           <View style={styles.previewContainer}>
             <View style={styles.previewFrame}>
               {reelData.videoUrl ? (
                 <Video
+                  key={reelData.videoUrl} // Force fresh player instance
                   source={{ uri: reelData.videoUrl }}
                   rate={1.0}
                   volume={1.0}
                   isMuted={false}
                   resizeMode={ResizeMode.COVER}
-                  shouldPlay={isFocused}
+                  shouldPlay={isFocused && !downloading}
                   isLooping
                   style={styles.videoPlayer}
-                  useNativeControls
+                  useNativeControls={!downloading}
                 />
               ) : (
                 <View style={styles.thumbnailPlaceholder}>
@@ -234,19 +274,34 @@ export default function ReelDownloaderScreen({ navigation, route }) {
               )}
             </View>
 
+
+            {downloading && (
+              <ProgressBar progress={downloadProgress} label="Downloading Reel" />
+            )}
+
             <View style={styles.metaCard}>
               <Text style={styles.metaTitle}>{reelData.title || 'Extracted Reel'}</Text>
               
               <TouchableOpacity 
-                style={[styles.downloadActionBtn, downloading && { opacity: 0.7 }]}
+                style={[styles.downloadActionBtn, downloading && { opacity: 0.5, backgroundColor: COLORS.textSecondary }]}
                 onPress={handleDownload}
                 disabled={downloading}
               >
-                <Download color="#000" size={18} />
-                <Text style={styles.downloadActionText}>{downloading ? 'Downloading...' : 'Download Reel'}</Text>
+                {downloading ? (
+                  <ActivityIndicator color="#000" size="small" style={{ marginRight: 10 }} />
+                ) : (
+                  <Download color="#000" size={18} style={{ marginRight: 10 }} />
+                )}
+                <Text style={styles.downloadActionText}>
+                  {downloading ? `Downloading ${Math.round(downloadProgress * 100)}%` : 'Download Reel'}
+                </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.shareActionBtn} onPress={handleShare}>
+              <TouchableOpacity 
+                style={[styles.shareActionBtn, downloading && { opacity: 0.5 }]} 
+                onPress={handleShare}
+                disabled={downloading}
+              >
                 <Share2 color={COLORS.textSecondary} size={16} />
                 <Text style={styles.shareActionText}>SHARE LINK</Text>
               </TouchableOpacity>
@@ -257,6 +312,7 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     </LinearGradient>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {

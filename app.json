@@ -13,7 +13,8 @@
       "backgroundColor": "#0F0F0F"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "jsEngine": "hermes"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,14 +22,16 @@
         "backgroundColor": "#0F0F0F"
       },
       "edgeToEdgeEnabled": true,
+      "jsEngine": "hermes",
       "permissions": [
         "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_MEDIA_VIDEO",
-        "android.permission.READ_MEDIA_AUDIO",
-        "android.permission.ACCESS_MEDIA_LOCATION"
+        "android.permission.READ_MEDIA_VIDEO"
       ],
-      "package": "com.shahid310.reelvault"
+      "package": "com.shahid310.reelvault",
+      "usesCleartextTraffic": true
     },
+
+
     "web": {
       "favicon": "./assets/favicon.png"
     },
@@ -36,12 +39,13 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow ReelVault to save videos to your gallery.",
-          "savePhotosPermission": "Allow ReelVault to save videos to your gallery.",
+          "photosPermission": "Allow access to save reels",
+          "savePhotosPermission": "Allow saving reels to your gallery",
           "isAccessMediaLocationEnabled": true
         }
       ]
     ],
+
     "extra": {
       "eas": {
         "projectId": "c1a6dfb7-4226-4623-96b1-614de6690392"

@@ -1,40 +1,60 @@
 import * as FileSystem from 'expo-file-system/legacy';
+
 import * as MediaLibrary from 'expo-media-library';
-import { Alert } from 'react-native';
+import { Alert, Linking } from 'react-native';
 
-export const downloadFile = async (url, fileName, type = 'video') => {
+export const downloadFile = async (url, fileName, onProgress) => {
   try {
-    // 1. Request Permissions (Modern Android 13+ Best Practice: WriteOnly)
-    const permission = await MediaLibrary.getPermissionsAsync(true); 
-    let status = permission.status;
+    // 1. Request/Check Permissions (Write-only avoids the AUDIO permission error)
+    const { status } = await MediaLibrary.requestPermissionsAsync(true);
 
+    
     if (status !== 'granted') {
-      const resp = await MediaLibrary.requestPermissionsAsync(true); 
-      status = resp.status;
-    }
 
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'ReelVault needs gallery access to save videos. Please enable it in settings.');
+      Alert.alert(
+        'Permission Required',
+        'Allow storage access to download reels',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() }
+        ]
+      );
       return false;
     }
 
     // 2. Define local URI
     const fileUri = `${FileSystem.documentDirectory}${fileName}`;
-    console.log('Starting download to:', fileUri);
+    
+    // 3. Create Download Resumable for progress tracking
+    const downloadResumable = FileSystem.createDownloadResumable(
+      url,
+      fileUri,
+      {},
+      (downloadProgress) => {
+        const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+        if (onProgress) {
+          onProgress(progress);
+        }
+      }
+    );
 
-    // 3. Download the file
-    const { uri } = await FileSystem.downloadAsync(url, fileUri);
-    console.log('Download complete at:', uri);
+    // 4. Start Download
+    const result = await downloadResumable.downloadAsync();
+    
+    if (!result || result.status !== 200) {
+      throw new Error('Download failed');
+    }
 
-    // 4. Save to Media Library (Gallery)
-    const asset = await MediaLibrary.createAssetAsync(uri);
+    // 5. Save to Media Library (Gallery)
+    const asset = await MediaLibrary.createAssetAsync(result.uri);
+    // Explicitly using the album name 'ReelVault'
     await MediaLibrary.createAlbumAsync('ReelVault', asset, false);
-    console.log('Saved to gallery successfully');
-
+    
     return true;
   } catch (error) {
-    console.error('CRITICAL Download error:', error);
-    Alert.alert('Download Failed', `Error: ${error.message || 'Unknown conflict'}\nPlease ensure the app has storage permissions.`);
+    console.error('Download error:', error);
+    Alert.alert('Download Failed', error.message || 'An error occurred while downloading the file.');
     return false;
   }
 };
+

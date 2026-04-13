@@ -175,7 +175,63 @@ app.get('/stories/:username', async (req, res) => {
   });
 });
 
-// 3. Server Health & Dependency Check
+// 3. Media Proxy (Crucial for bypassing Instagram IP-locking & Connection Reset)
+app.get('/proxy', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).send('Url is required');
+
+  console.log('Proxying request for:', url.substring(0, 50) + '...');
+
+  try {
+    const protocol = url.startsWith('https') ? require('https') : require('http');
+    
+    // Forward the Range header if present
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'Referer': 'https://www.instagram.com/',
+      'Accept': '*/*',
+    };
+    if (req.headers.range) {
+      headers['Range'] = req.headers.range;
+    }
+
+    const options = { headers, timeout: 20000 };
+
+    protocol.get(url, options, (proxyRes) => {
+      // Forward status and essential headers
+      res.status(proxyRes.statusCode);
+      
+      const responseHeaders = {
+        'Content-Type': proxyRes.headers['content-type'] || 'video/mp4',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=3600',
+      };
+
+      if (proxyRes.headers['content-length']) responseHeaders['Content-Length'] = proxyRes.headers['content-length'];
+      if (proxyRes.headers['content-range']) responseHeaders['Content-Range'] = proxyRes.headers['content-range'];
+      if (proxyRes.headers['accept-ranges']) responseHeaders['Accept-Ranges'] = proxyRes.headers['accept-ranges'];
+
+      res.set(responseHeaders);
+      
+      proxyRes.pipe(res);
+      
+      proxyRes.on('error', (err) => {
+        console.error('Stream Error:', err);
+        if (!res.headersSent) res.status(500).send('Stream interrupted');
+      });
+    }).on('error', (e) => {
+      console.error('Proxy Request Error:', e);
+      if (!res.headersSent) res.status(500).send('Proxying failed');
+    });
+  } catch (e) {
+    console.error('Proxy logic crash:', e);
+    if (!res.headersSent) res.status(500).send('Internal Server Error');
+  }
+});
+
+
+
+// 4. Server Health & Dependency Check
 app.get('/status', (req, res) => {
   exec('yt-dlp --version', (error, stdout) => {
     if (error) {
