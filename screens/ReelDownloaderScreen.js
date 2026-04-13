@@ -156,7 +156,7 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     if (!reelData?.videoUrl) return;
     try {
       await Share.share({
-        message: `Check out this Reel I found via ReelVault! \n\n${url}`,
+        message: `Check out this Reel I found via SaveX! \n\n${url}`,
         url: reelData.videoUrl
       });
     } catch (error) {
@@ -182,7 +182,7 @@ export default function ReelDownloaderScreen({ navigation, route }) {
         </TouchableOpacity>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Shield color={COLORS.primary} size={18} style={{ marginRight: 8 }} />
-          <Text style={styles.navTitle}>REELVAULT</Text>
+          <Text style={styles.navTitle}>SAVEX</Text>
         </View>
       </View>
 

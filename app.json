@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "ReelVault Pro",
-    "slug": "reelvault",
+    "name": "SaveX",
+    "slug": "savex",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo.jpeg",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -39,8 +39,8 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow access to save reels",
-          "savePhotosPermission": "Allow saving reels to your gallery",
+          "photosPermission": "Allow access to save media",
+          "savePhotosPermission": "Allow saving media to your gallery",
           "isAccessMediaLocationEnabled": true
         }
       ]

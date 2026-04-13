@@ -67,7 +67,7 @@ app.use((req, res, next) => {
 app.get('/', (req, res) => {
   res.json({
     status: 'ONLINE',
-    engine: 'ReelVault Core',
+    engine: 'SaveX Core',
     version: '1.2.0',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
@@ -97,6 +97,29 @@ function isValidYouTubeUrl(url) {
   if (!url || typeof url !== 'string') return false;
   const u = url.trim();
   return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//i.test(u);
+}
+
+function extractYouTubeVideoId(rawUrl) {
+  const url = String(rawUrl || '').trim();
+  if (!url) return '';
+  try {
+    const u = new URL(url.startsWith('http') ? url : `https://${url}`);
+    const host = u.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') {
+      return u.pathname.replace(/^\//, '').split('/')[0] || '';
+    }
+    const v = u.searchParams.get('v');
+    if (v) return v;
+    const parts = u.pathname.split('/').filter(Boolean);
+    const embedIdx = parts.indexOf('embed');
+    if (embedIdx !== -1 && parts[embedIdx + 1]) return parts[embedIdx + 1];
+    const shortsIdx = parts.indexOf('shorts');
+    if (shortsIdx !== -1 && parts[shortsIdx + 1]) return parts[shortsIdx + 1];
+  } catch (_) {
+    const m = url.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([a-zA-Z0-9_-]{6,})/);
+    if (m) return m[1];
+  }
+  return '';
 }
 
 function runYtDlp(args, { timeoutMs = 5 * 60 * 1000 } = {}) {
@@ -148,27 +171,33 @@ function looksLikeYouTubeBotCheck(stderr) {
   );
 }
 
-function pickAvailableMp4Qualities(info) {
-  const allowed = [360, 720, 1080];
-  const heights = new Set();
+function looksLikeYouTubeSignatureIssue(stderr) {
+  const s = (stderr || '').toLowerCase();
+  return (
+    (s.includes('signature') && s.includes('failed')) ||
+    s.includes('nsig') ||
+    s.includes('some formats may be missing') ||
+    s.includes('only images are available') ||
+    s.includes('challenge solving failed')
+  );
+}
+
+const YT_CLIENT_ARGS = ['--extractor-args', 'youtube:player_client=android'];
+
+function buildYoutubeVideoOptions(info) {
   const formats = Array.isArray(info?.formats) ? info.formats : [];
+  const heights = new Set();
   for (const f of formats) {
     const h = Number(f?.height);
-    if (!h || !Number.isFinite(h)) continue;
-    // Only consider formats that contain video
-    if (f?.vcodec && f.vcodec !== 'none') {
-      heights.add(h);
-    }
+    if (!Number.isFinite(h) || h <= 0) continue;
+    if (f?.vcodec && f.vcodec !== 'none') heights.add(h);
   }
-  const available = allowed.filter((a) => Array.from(heights).some((h) => h === a || h > a));
-  // If video has only e.g. 480p, reflect that by enabling 360p only.
-  if (available.length === 0) {
-    const maxH = Math.max(0, ...Array.from(heights));
-    if (maxH > 0) {
-      return allowed.filter((a) => a <= maxH).map((h) => `${h}p`);
-    }
+  const sorted = Array.from(heights).sort((a, b) => b - a);
+  const options = [{ key: 'best', label: 'Best quality', maxHeight: null }];
+  for (const h of sorted) {
+    options.push({ key: String(h), label: `${h}p`, maxHeight: h });
   }
-  return available.map((h) => `${h}p`);
+  return options;
 }
 
 function resolveHeightForRequest(requestedHeight, info) {
@@ -197,13 +226,17 @@ app.post('/youtube/info', async (req, res) => {
 
   try {
     const authArgs = fs.existsSync(YT_COOKIES_PATH) ? ['--cookies', YT_COOKIES_PATH] : [];
-    const { stdout } = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', ...authArgs, url.trim()], { timeoutMs: 30000 });
+    const { stdout } = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', ...YT_CLIENT_ARGS, ...authArgs, url.trim()], { timeoutMs: 30000 });
     const info = JSON.parse(stdout.trim());
+    const videoId = info.id || extractYouTubeVideoId(url.trim());
+    const embedUrl = videoId ? `https://www.youtube.com/embed/${videoId}?playsinline=1` : '';
     return res.json({
       title: info.title || '',
       thumbnail: info.thumbnail || '',
       duration: info.duration_string || secondsToDuration(info.duration),
-      availableMp4Qualities: pickAvailableMp4Qualities(info),
+      videoId,
+      embedUrl,
+      videoOptions: buildYoutubeVideoOptions(info),
     });
   } catch (e) {
     const details = (e && (e.stderr || e.err?.message || '')) || '';
@@ -212,6 +245,13 @@ app.post('/youtube/info', async (req, res) => {
       return res.status(403).json({
         error: 'YouTube Requires Sign-in',
         message: 'YouTube is blocking this server. Add YouTube cookies to the backend (Render Secret: youtube_cookies.txt) and try again.',
+        details: process.env.NODE_ENV === 'development' ? details : undefined
+      });
+    }
+    if (looksLikeYouTubeSignatureIssue(details)) {
+      return res.status(503).json({
+        error: 'YouTube Extraction Blocked',
+        message: 'YouTube changed its player/signature. Update yt-dlp on the server and try again (and/or add YouTube cookies).',
         details: process.env.NODE_ENV === 'development' ? details : undefined
       });
     }
@@ -225,23 +265,44 @@ app.post('/youtube/info', async (req, res) => {
 
 // YouTube: Download to server + return file URL
 app.post('/youtube/download', async (req, res) => {
-  const { url, format, quality } = req.body || {};
+  const body = req.body || {};
+  const { url, kind, maxHeight, audioBitrate, format, quality } = body;
 
   if (!isValidYouTubeUrl(url)) {
     return res.status(400).json({ error: 'Invalid link', message: 'Please paste a valid YouTube link.' });
   }
-  if (format !== 'mp4' && format !== 'mp3') {
-    return res.status(400).json({ error: 'Invalid format', message: 'format must be mp4 or mp3.' });
+
+  let dlKind = kind;
+  let dlMaxHeight = maxHeight;
+  let dlAudioBitrate = String(audioBitrate || '192').trim();
+
+  if (dlKind !== 'video' && dlKind !== 'audio') {
+    if (format === 'mp4') dlKind = 'video';
+    else if (format === 'mp3') dlKind = 'audio';
+  }
+  if (dlKind !== 'video' && dlKind !== 'audio') {
+    return res.status(400).json({ error: 'Invalid request', message: 'kind must be video or audio.' });
   }
 
-  const q = String(quality || '').trim();
-  const mp4Qualities = new Set(['360p', '720p', '1080p']);
-  const mp3Qualities = new Set(['128', '192', '320']);
-  if (format === 'mp4' && !mp4Qualities.has(q)) {
-    return res.status(400).json({ error: 'Invalid quality', message: 'For mp4, quality must be 360p, 720p, or 1080p.' });
+  if (dlKind === 'video') {
+    if (dlMaxHeight === undefined || dlMaxHeight === '') {
+      if (quality && String(quality).endsWith('p')) {
+        dlMaxHeight = Number(String(quality).replace('p', ''));
+      } else {
+        dlMaxHeight = null;
+      }
+    }
+    if (dlMaxHeight !== null && dlMaxHeight !== undefined && (Number.isNaN(Number(dlMaxHeight)) || Number(dlMaxHeight) <= 0)) {
+      return res.status(400).json({ error: 'Invalid quality', message: 'maxHeight must be a positive number or omitted for best.' });
+    }
   }
-  if (format === 'mp3' && !mp3Qualities.has(q)) {
-    return res.status(400).json({ error: 'Invalid quality', message: 'For mp3, quality must be 128, 192, or 320.' });
+
+  if (dlKind === 'audio') {
+    if (!audioBitrate && quality) dlAudioBitrate = String(quality).trim();
+    const mp3Qualities = new Set(['128', '192', '320']);
+    if (!mp3Qualities.has(dlAudioBitrate)) {
+      return res.status(400).json({ error: 'Invalid quality', message: 'audioBitrate must be 128, 192, or 320.' });
+    }
   }
 
   const cleanUrl = url.trim();
@@ -253,7 +314,7 @@ app.post('/youtube/download', async (req, res) => {
   let infoJson = null;
   try {
     const authArgs = fs.existsSync(YT_COOKIES_PATH) ? ['--cookies', YT_COOKIES_PATH] : [];
-    const { stdout } = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', ...authArgs, cleanUrl], { timeoutMs: 30000 });
+    const { stdout } = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', ...YT_CLIENT_ARGS, ...authArgs, cleanUrl], { timeoutMs: 30000 });
     const info = JSON.parse(stdout.trim());
     infoJson = info;
     title = info.title || '';
@@ -265,8 +326,8 @@ app.post('/youtube/download', async (req, res) => {
   }
 
   const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  const ext = format === 'mp4' ? 'mp4' : 'mp3';
-  const baseName = `reelvault_youtube_${id}`;
+  const ext = dlKind === 'video' ? 'mp4' : 'mp3';
+  const baseName = `savex_youtube_${id}`;
   const fileName = `${baseName}.${ext}`;
   const outputTemplate = path.join(YT_DOWNLOADS_DIR, `${baseName}.%(ext)s`);
   const outputPath = path.join(YT_DOWNLOADS_DIR, fileName);
@@ -276,13 +337,18 @@ app.post('/youtube/download', async (req, res) => {
     const authArgs = fs.existsSync(YT_COOKIES_PATH) ? ['--cookies', YT_COOKIES_PATH] : [];
 
     let args;
-    if (format === 'mp4') {
-      const requested = Number(q.replace('p', ''));
-      const height = infoJson ? resolveHeightForRequest(requested, infoJson) : requested;
+    if (dlKind === 'video') {
+      let formatStr = 'bestvideo+bestaudio/best';
+      if (dlMaxHeight !== null && dlMaxHeight !== undefined) {
+        const requested = Number(dlMaxHeight);
+        const height = infoJson ? resolveHeightForRequest(requested, infoJson) : requested;
+        formatStr = `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best/bestvideo+bestaudio/best`;
+      }
       args = [
         ...commonArgs,
+        ...YT_CLIENT_ARGS,
         ...authArgs,
-        '-f', `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best/bestvideo+bestaudio/best`,
+        '-f', formatStr,
         '--merge-output-format', 'mp4',
         '-o', outputTemplate,
         cleanUrl
@@ -290,10 +356,11 @@ app.post('/youtube/download', async (req, res) => {
     } else {
       args = [
         ...commonArgs,
+        ...YT_CLIENT_ARGS,
         ...authArgs,
         '-x',
         '--audio-format', 'mp3',
-        '--audio-quality', `${q}K`,
+        '--audio-quality', `${dlAudioBitrate}K`,
         '-o', outputTemplate,
         cleanUrl
       ];
@@ -329,6 +396,13 @@ app.post('/youtube/download', async (req, res) => {
       return res.status(403).json({
         error: 'YouTube Requires Sign-in',
         message: 'YouTube is blocking this server. Add YouTube cookies to the backend (Render Secret: youtube_cookies.txt) and try again.',
+        details: process.env.NODE_ENV === 'development' ? details : undefined
+      });
+    }
+    if (looksLikeYouTubeSignatureIssue(details)) {
+      return res.status(503).json({
+        error: 'YouTube Extraction Blocked',
+        message: 'YouTube changed its player/signature. Update yt-dlp on the server and try again (and/or add YouTube cookies).',
         details: process.env.NODE_ENV === 'development' ? details : undefined
       });
     }
@@ -547,5 +621,5 @@ app.get('/status', (req, res) => {
 });
 
 app.listen(PORT, HOST, () => {
-  console.log(`REELVAULT Server active on ${HOST}:${PORT}`);
+  console.log(`SaveX Server active on ${HOST}:${PORT}`);
 });

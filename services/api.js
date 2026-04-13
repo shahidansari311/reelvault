@@ -89,9 +89,16 @@ export const fetchYouTubeInfo = async (url) => {
   }
 };
 
-export const requestYouTubeDownload = async ({ url, format, quality }) => {
+export const requestYouTubeDownload = async ({ url, kind, maxHeight, audioBitrate, format, quality }) => {
   try {
-    const response = await api.post('/youtube/download', { url, format, quality });
+    const response = await api.post('/youtube/download', {
+      url,
+      kind,
+      maxHeight,
+      audioBitrate,
+      format,
+      quality,
+    });
     return response.data;
   } catch (error) {
     console.error('Error requesting YouTube download:', error);

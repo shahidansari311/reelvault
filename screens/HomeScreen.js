@@ -54,7 +54,7 @@ export default function HomeScreen({ navigation }) {
       <View style={[styles.navbar, { justifyContent: 'center' }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Shield color={COLORS.primary} size={18} style={{ marginRight: 8 }} />
-          <Text style={styles.navTitle}>REELVAULT</Text>
+          <Text style={styles.navTitle}>SAVEX</Text>
         </View>
       </View>
 
@@ -63,20 +63,20 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.heroSection}>
           <Text style={styles.heroTitle}>
             Download your {'\n'}
-            <Text style={{ color: COLORS.primary }}>reel and stories for free.</Text>
+            <Text style={{ color: COLORS.primary }}>all videos using link.</Text>
           </Text>
           <Text style={styles.heroSub}>
-            High quality instagram stories and reel downloader made with &heart; by Shahid Ansari.
+            Save videos quickly by pasting a link. Built with &heart; by Shahid Ansari.
           </Text>
         </View>
 
-        {/* Action 01: Reels */}
+        {/* Action 01: Instagram */}
         <TouchableOpacity 
           style={styles.mainActionBox}
           onPress={() => navigation.navigate('Reels')}
         >
           <View style={styles.actionInfo}>
-            <Text style={styles.actionTitle}>Download Reels</Text>
+            <Text style={styles.actionTitle}>Instagram Videos</Text>
             <ArrowRight color={COLORS.text} size={24} />
           </View>
           <View style={styles.actionPreview}>
@@ -99,7 +99,7 @@ export default function HomeScreen({ navigation }) {
           onPress={() => navigation.navigate('Stories')}
         >
           <View style={styles.actionInfo}>
-            <Text style={styles.actionTitle}>Download Stories</Text>
+            <Text style={styles.actionTitle}>Instagram Stories</Text>
             <ArrowRight color={COLORS.text} size={24} />
           </View>
           <View style={styles.actionRow}>

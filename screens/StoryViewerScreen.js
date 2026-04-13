@@ -312,7 +312,7 @@ export default function StoryViewerScreen({ navigation }) {
         </TouchableOpacity>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Shield color={COLORS.primary} size={18} style={{ marginRight: 8 }} />
-          <Text style={styles.navTitle}>REELVAULT</Text>
+          <Text style={styles.navTitle}>SAVEX</Text>
         </View>
       </View>
 

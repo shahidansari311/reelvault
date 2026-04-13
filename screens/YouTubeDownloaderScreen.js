@@ -7,16 +7,17 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
-  Image,
   ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
+import { WebView } from 'react-native-webview';
+import { useIsFocused } from '@react-navigation/native';
 import {
   Link2 as LinkIcon,
   Shield,
-  Play,
   ChevronLeft,
+  Download,
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 import { CustomInput } from '../components/CustomInput';
@@ -25,15 +26,14 @@ import { downloadFile } from '../utils/download';
 import { fetchYouTubeInfo, requestYouTubeDownload } from '../services/api';
 
 export default function YouTubeDownloaderScreen({ navigation }) {
+  const isFocused = useIsFocused();
   const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [ytFormat, setYtFormat] = useState('mp4'); // mp4 | mp3
-  const [ytQuality, setYtQuality] = useState('720p'); // mp4: 360p|720p|1080p, mp3: 128|192|320
   const [ytLoading, setYtLoading] = useState(false);
   const [ytDownloading, setYtDownloading] = useState(false);
   const [ytDownloadProgress, setYtDownloadProgress] = useState(0);
   const [ytInfo, setYtInfo] = useState(null);
   const [ytError, setYtError] = useState(null);
-  const [availableMp4Qualities, setAvailableMp4Qualities] = useState(null);
+  const [audioBitrate, setAudioBitrate] = useState('192');
 
   const validateYouTubeUrl = (u) => /(youtube\.com|youtu\.be)\//i.test((u || '').trim());
 
@@ -47,15 +47,7 @@ export default function YouTubeDownloaderScreen({ navigation }) {
     }
   };
 
-  const handleYtFormatChange = (format) => {
-    setYtFormat(format);
-    setYtError(null);
-    setYtInfo(null);
-    setAvailableMp4Qualities(null);
-    setYtQuality(format === 'mp4' ? '720p' : '192');
-  };
-
-  const handleFetchYouTubeInfo = async () => {
+  const handleFetch = async () => {
     if (!validateYouTubeUrl(youtubeUrl)) {
       Alert.alert('Invalid link', 'Please paste a valid YouTube link.');
       return;
@@ -68,14 +60,6 @@ export default function YouTubeDownloaderScreen({ navigation }) {
     try {
       const data = await fetchYouTubeInfo(youtubeUrl.trim());
       setYtInfo(data);
-      const avail = Array.isArray(data?.availableMp4Qualities) ? data.availableMp4Qualities : null;
-      setAvailableMp4Qualities(avail);
-      if (ytFormat === 'mp4' && avail?.length) {
-        // Keep current if valid; otherwise pick best available.
-        if (!avail.includes(ytQuality)) {
-          setYtQuality(avail.includes('1080p') ? '1080p' : (avail.includes('720p') ? '720p' : avail[0]));
-        }
-      }
     } catch (err) {
       const title = err.response?.data?.error || 'Network Error';
       const message = err.response?.data?.message || 'Could not fetch video info. Please try again.';
@@ -85,35 +69,25 @@ export default function YouTubeDownloaderScreen({ navigation }) {
     }
   };
 
-  const handleDownloadYouTube = async () => {
-    if (!validateYouTubeUrl(youtubeUrl)) {
-      Alert.alert('Invalid link', 'Please paste a valid YouTube link.');
-      return;
-    }
-    if (ytDownloading) return;
+  const runDownload = async ({ kind, maxHeight, ext, label }) => {
+    if (!validateYouTubeUrl(youtubeUrl) || ytDownloading) return;
 
     const attempt = async () => {
       const payload = await requestYouTubeDownload({
         url: youtubeUrl.trim(),
-        format: ytFormat,
-        quality: ytQuality,
-      });
-
-      setYtInfo({
-        title: payload.title || ytInfo?.title || '',
-        thumbnail: payload.thumbnail || ytInfo?.thumbnail || '',
-        duration: payload.duration || ytInfo?.duration || '',
+        kind,
+        maxHeight: kind === 'video' ? maxHeight : undefined,
+        audioBitrate: kind === 'audio' ? audioBitrate : undefined,
       });
 
       if (!payload.downloadUrl) {
         throw new Error('No downloadUrl returned from server');
       }
 
-      const ext = ytFormat === 'mp3' ? 'mp3' : 'mp4';
       const fileName = `youtube_${Date.now()}.${ext}`;
       const success = await downloadFile(payload.downloadUrl, fileName, (p) => setYtDownloadProgress(p));
       if (success) {
-        Alert.alert('Success', `${ytFormat.toUpperCase()} saved to your gallery!`);
+        Alert.alert('Success', `${label} saved to your gallery!`);
       }
     };
 
@@ -150,6 +124,9 @@ export default function YouTubeDownloaderScreen({ navigation }) {
     }
   };
 
+  const videoOptions = Array.isArray(ytInfo?.videoOptions) ? ytInfo.videoOptions : [];
+  const embedUrl = ytInfo?.embedUrl || '';
+
   return (
     <LinearGradient colors={['#0A0A0B', '#151518', '#050505']} style={styles.container}>
       <LinearGradient
@@ -168,7 +145,7 @@ export default function YouTubeDownloaderScreen({ navigation }) {
         </TouchableOpacity>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Shield color={COLORS.primary} size={18} style={{ marginRight: 8 }} />
-          <Text style={styles.navTitle}>REELVAULT</Text>
+          <Text style={styles.navTitle}>SAVEX</Text>
         </View>
       </View>
 
@@ -182,7 +159,7 @@ export default function YouTubeDownloaderScreen({ navigation }) {
             YouTube <Text style={{ fontStyle: 'italic', fontWeight: '400', color: COLORS.primary }}>Downloader.</Text>
           </Text>
           <Text style={styles.heroSub}>
-            Paste a YouTube link, choose format and quality, then download with smooth progress tracking.
+            Paste a link and fetch the video first. Preview it here, then pick a format to download.
           </Text>
         </View>
 
@@ -193,8 +170,12 @@ export default function YouTubeDownloaderScreen({ navigation }) {
             onChangeText={(text) => {
               setYoutubeUrl(text);
               setYtError(null);
+              setYtInfo(null);
             }}
-            onClear={() => setYoutubeUrl('')}
+            onClear={() => {
+              setYoutubeUrl('');
+              setYtInfo(null);
+            }}
             icon={LinkIcon}
             suffix={() => (
               <TouchableOpacity style={styles.inlinePasteBtn} onPress={handlePaste}>
@@ -203,94 +184,17 @@ export default function YouTubeDownloaderScreen({ navigation }) {
             )}
           />
 
-          <View style={styles.optionRow}>
-            <Text style={styles.optionLabel}>Format</Text>
-            <View style={styles.chipRow}>
-              <TouchableOpacity
-                style={[styles.chip, ytFormat === 'mp4' && styles.chipActive]}
-                onPress={() => handleYtFormatChange('mp4')}
-                disabled={ytLoading || ytDownloading}
-              >
-                <Text style={[styles.chipText, ytFormat === 'mp4' && styles.chipTextActive]}>MP4 (Video)</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.chip, ytFormat === 'mp3' && styles.chipActive]}
-                onPress={() => handleYtFormatChange('mp3')}
-                disabled={ytLoading || ytDownloading}
-              >
-                <Text style={[styles.chipText, ytFormat === 'mp3' && styles.chipTextActive]}>MP3 (Audio)</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={styles.optionRow}>
-            <Text style={styles.optionLabel}>Quality</Text>
-            <View style={styles.chipRow}>
-              {ytFormat === 'mp4'
-                ? ['360p', '720p', '1080p'].map((q) => {
-                    const enabled = !availableMp4Qualities || availableMp4Qualities.includes(q);
-                    const active = ytQuality === q;
-                    return (
-                    <TouchableOpacity
-                      key={q}
-                      style={[
-                        styles.chipSmall,
-                        active && styles.chipActive,
-                        !enabled && styles.chipDisabled,
-                      ]}
-                      onPress={() => enabled && setYtQuality(q)}
-                      disabled={ytLoading || ytDownloading}
-                    >
-                      <Text
-                        style={[
-                          styles.chipText,
-                          active && styles.chipTextActive,
-                          !enabled && styles.chipTextDisabled,
-                        ]}
-                      >
-                        {q}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                  })
-                : ['128', '192', '320'].map((q) => (
-                    <TouchableOpacity
-                      key={q}
-                      style={[styles.chipSmall, ytQuality === q && styles.chipActive]}
-                      onPress={() => setYtQuality(q)}
-                      disabled={ytLoading || ytDownloading}
-                    >
-                      <Text style={[styles.chipText, ytQuality === q && styles.chipTextActive]}>{q} kbps</Text>
-                    </TouchableOpacity>
-                  ))}
-            </View>
-          </View>
-
-          <View style={styles.dualBtnRow}>
-            <TouchableOpacity
-              style={[styles.secondaryBtn, (ytLoading || ytDownloading) && { opacity: 0.7 }]}
-              onPress={handleFetchYouTubeInfo}
-              disabled={ytLoading || ytDownloading}
-            >
-              {ytLoading ? (
-                <ActivityIndicator color={COLORS.text} size="small" />
-              ) : (
-                <Text style={styles.secondaryBtnText}>Fetch Info</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.primaryBtn, (ytDownloading || ytLoading) && { opacity: 0.7 }]}
-              onPress={handleDownloadYouTube}
-              disabled={ytDownloading || ytLoading}
-            >
-              {ytDownloading ? (
-                <ActivityIndicator color="#000" size="small" />
-              ) : (
-                <Text style={styles.primaryBtnText}>Download</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={[styles.fetchFullBtn, (ytLoading || ytDownloading) && { opacity: 0.7 }]}
+            onPress={handleFetch}
+            disabled={ytLoading || ytDownloading}
+          >
+            {ytLoading ? (
+              <ActivityIndicator color="#000" size="small" />
+            ) : (
+              <Text style={styles.fetchFullBtnText}>FETCH VIDEO</Text>
+            )}
+          </TouchableOpacity>
 
           {ytDownloading && (
             <View style={{ marginTop: 18 }}>
@@ -309,15 +213,20 @@ export default function YouTubeDownloaderScreen({ navigation }) {
           )}
         </View>
 
-        {ytInfo && (
+        {ytInfo && embedUrl ? (
           <View style={styles.previewContainer}>
-            <View style={styles.previewFrame}>
-              {ytInfo.thumbnail ? (
-                <Image source={{ uri: ytInfo.thumbnail }} style={styles.thumbnailImage} />
+            <View style={styles.webWrap}>
+              {isFocused ? (
+                <WebView
+                  source={{ uri: embedUrl }}
+                  style={styles.webView}
+                  allowsFullscreenVideo
+                  mediaPlaybackRequiresUserAction={false}
+                  javaScriptEnabled
+                  domStorageEnabled
+                />
               ) : (
-                <View style={styles.thumbnailPlaceholder}>
-                  <Play color={COLORS.text} size={40} />
-                </View>
+                <View style={[styles.webView, styles.webPlaceholder]} />
               )}
             </View>
 
@@ -325,8 +234,61 @@ export default function YouTubeDownloaderScreen({ navigation }) {
               <Text style={styles.metaTitle}>{ytInfo.title || 'YouTube Video'}</Text>
               {!!ytInfo.duration && <Text style={styles.metaSubtitle}>Duration: {ytInfo.duration}</Text>}
             </View>
+
+            <View style={styles.formatsCard}>
+              <Text style={styles.formatsSectionTitle}>Video</Text>
+              <Text style={styles.formatsHint}>Tap a quality to download MP4.</Text>
+              {videoOptions.map((opt) => (
+                <TouchableOpacity
+                  key={opt.key}
+                  style={[styles.formatRow, ytDownloading && styles.formatRowDisabled]}
+                  onPress={() =>
+                    runDownload({
+                      kind: 'video',
+                      maxHeight: opt.maxHeight,
+                      ext: 'mp4',
+                      label: opt.label,
+                    })
+                  }
+                  disabled={ytDownloading}
+                >
+                  <Text style={styles.formatRowText}>{opt.label}</Text>
+                  <Download color={COLORS.primary} size={18} />
+                </TouchableOpacity>
+              ))}
+
+              <Text style={[styles.formatsSectionTitle, { marginTop: 22 }]}>Audio only</Text>
+              <Text style={styles.formatsHint}>Choose bitrate, then download MP3.</Text>
+              <View style={styles.chipRow}>
+                {['128', '192', '320'].map((b) => (
+                  <TouchableOpacity
+                    key={b}
+                    style={[styles.chipSmall, audioBitrate === b && styles.chipActive]}
+                    onPress={() => setAudioBitrate(b)}
+                    disabled={ytDownloading}
+                  >
+                    <Text style={[styles.chipText, audioBitrate === b && styles.chipTextActive]}>{b} kbps</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TouchableOpacity
+                style={[styles.audioDownloadBtn, ytDownloading && { opacity: 0.6 }]}
+                onPress={() =>
+                  runDownload({
+                    kind: 'audio',
+                    maxHeight: undefined,
+                    ext: 'mp3',
+                    label: `MP3 (${audioBitrate} kbps)`,
+                  })
+                }
+                disabled={ytDownloading}
+              >
+                <Download color="#000" size={18} style={{ marginRight: 10 }} />
+                <Text style={styles.audioDownloadBtnText}>Download MP3</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        )}
+        ) : null}
       </ScrollView>
     </LinearGradient>
   );
@@ -388,117 +350,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
   },
-  optionRow: {
-    marginTop: 6,
-    marginBottom: 16,
-  },
-  optionLabel: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 10,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  chip: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-  },
-  chipSmall: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 16,
-  },
-  chipActive: {
-    backgroundColor: 'rgba(180, 185, 255, 0.18)',
-    borderColor: 'rgba(180, 185, 255, 0.35)',
-  },
-  chipDisabled: {
-    opacity: 0.35,
-  },
-  chipText: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  chipTextActive: {
-    color: COLORS.text,
-  },
-  chipTextDisabled: {
-    color: 'rgba(255,255,255,0.35)',
-  },
-  dualBtnRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 8,
-  },
-  secondaryBtn: {
-    flex: 1,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  secondaryBtnText: {
-    color: COLORS.text,
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  primaryBtn: {
-    flex: 1,
+  fetchFullBtn: {
     backgroundColor: COLORS.primary,
     height: 60,
     borderRadius: 30,
+    width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 8,
     ...SHADOWS.primary,
   },
-  primaryBtnText: {
+  fetchFullBtnText: {
     color: '#000',
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '900',
   },
   previewContainer: {
     marginTop: 10,
     marginBottom: 40,
   },
-  previewFrame: {
+  webWrap: {
     width: '100%',
-    aspectRatio: 4 / 5,
-    borderRadius: 32,
+    aspectRatio: 16 / 9,
+    borderRadius: 24,
     overflow: 'hidden',
     backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     ...SHADOWS.glass,
   },
-  thumbnailImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
+  webView: {
+    flex: 1,
+    backgroundColor: '#000',
   },
-  thumbnailPlaceholder: {
-    width: '100%',
-    height: '100%',
+  webPlaceholder: {
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -508,7 +394,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     borderWidth: 1,
     borderColor: COLORS.glassBorder,
-    marginBottom: 24,
+    marginBottom: 16,
     alignItems: 'center',
   },
   metaTitle: {
@@ -524,6 +410,87 @@ const styles = StyleSheet.create({
     marginTop: 8,
     opacity: 0.9,
     textAlign: 'center',
+  },
+  formatsCard: {
+    backgroundColor: 'rgba(0, 0, 0, 0.88)',
+    borderRadius: 28,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  formatsSectionTitle: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  formatsHint: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginTop: 6,
+    marginBottom: 14,
+    lineHeight: 18,
+  },
+  formatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  formatRowDisabled: {
+    opacity: 0.5,
+  },
+  formatRowText: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 16,
+  },
+  chipSmall: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+  },
+  chipActive: {
+    backgroundColor: 'rgba(180, 185, 255, 0.18)',
+    borderColor: 'rgba(180, 185, 255, 0.35)',
+  },
+  chipText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  chipTextActive: {
+    color: COLORS.text,
+  },
+  audioDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    height: 56,
+    borderRadius: 18,
+    ...SHADOWS.primary,
+  },
+  audioDownloadBtnText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '900',
   },
   errorBubble: {
     backgroundColor: 'rgba(255,107,107,0.05)',
@@ -551,4 +518,3 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
-

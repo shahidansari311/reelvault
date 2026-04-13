@@ -3,7 +3,7 @@ const axios = require('axios');
 const BASE_URL = 'http://localhost:5000';
 
 async function testBackend() {
-  console.log('🚀 INITIALIZING REELVAULT ENDPOINT TESTS...\n');
+  console.log('🚀 INITIALIZING SAVEX ENDPOINT TESTS...\n');
 
   // 1. Test /status
   try {

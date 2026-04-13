@@ -1,6 +1,6 @@
-# ReelVault 🎬
+# SaveX 🎬
 
-A premium Instagram Reel and Story downloader built with React Native and Expo. Download your favorite content directly to your gallery without any login requirements.
+A premium link-based media saver built with React Native and Expo. Save your favorite content directly to your gallery without any login requirements.
 
 ## 🚀 Features
 
@@ -60,7 +60,7 @@ The backend is built with Node.js and can be deployed for free on platforms like
    - Connect your GitHub repo.
    - Build command: `npm install`
    - Start command: `npm start`
-   - Copy the provided URL and paste it into `reelvault/services/api.js`.
+   - Copy the provided URL and paste it into `services/api.js`.
 
 ## 📱 Creating an APK (Android)
 

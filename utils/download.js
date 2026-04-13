@@ -50,8 +50,8 @@ export const downloadFile = async (url, fileName, onProgress) => {
 
     // 5. Save to Media Library (Gallery)
     const asset = await MediaLibrary.createAssetAsync(result.uri);
-    // Explicitly using the album name 'ReelVault'
-    await MediaLibrary.createAlbumAsync('ReelVault', asset, false);
+    // Explicitly using the album name 'SaveX'
+    await MediaLibrary.createAlbumAsync('SaveX', asset, false);
     
     return true;
   } catch (error) {

@@ -32,7 +32,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ReelVault ${{ github.ref_name }}
+          name: SaveX ${{ github.ref_name }}
           body: |
             ✅ APK build started successfully!
 
