@@ -178,11 +178,14 @@ function looksLikeYouTubeSignatureIssue(stderr) {
     s.includes('nsig') ||
     s.includes('some formats may be missing') ||
     s.includes('only images are available') ||
+    s.includes('requested format is not available') ||
     s.includes('challenge solving failed')
   );
 }
 
-const YT_CLIENT_ARGS = ['--extractor-args', 'youtube:player_client=android'];
+// 📱 Modern Extractor Args: Using multiple clients to bypass throttling/signature issues
+// 'ios' and 'web' are generally more stable with cookies than 'android'
+const YT_CLIENT_ARGS = ['--extractor-args', 'youtube:player_client=ios,web,mweb'];
 
 function buildYoutubeVideoOptions(info) {
   const formats = Array.isArray(info?.formats) ? info.formats : [];
@@ -338,11 +341,11 @@ app.post('/youtube/download', async (req, res) => {
 
     let args;
     if (dlKind === 'video') {
-      let formatStr = 'bestvideo+bestaudio/best';
+      let formatStr = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
       if (dlMaxHeight !== null && dlMaxHeight !== undefined) {
         const requested = Number(dlMaxHeight);
         const height = infoJson ? resolveHeightForRequest(requested, infoJson) : requested;
-        formatStr = `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]/best/bestvideo+bestaudio/best`;
+        formatStr = `bestvideo[height<=${height}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${height}][ext=mp4]/best[height<=${height}]/bestvideo+bestaudio/best`;
       }
       args = [
         ...commonArgs,

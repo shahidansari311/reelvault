@@ -30,6 +30,22 @@ async function testBackend() {
     console.log('   Error Detail:', err.response?.data?.message || err.message, '\n');
   }
 
+  // 3. Test /youtube/info
+  console.log('⏳ Testing /youtube/info endpoint...');
+  try {
+    const ytInfoRes = await axios.post(`${BASE_URL}/youtube/info`, { 
+      url: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ' 
+    });
+    if (ytInfoRes.data.title) {
+      console.log('✅ [YT INFO] PASS: Successfully fetched video metadata.');
+      console.log(`   - Title: ${ytInfoRes.data.title}`);
+      console.log(`   - Video Options: ${ytInfoRes.data.videoOptions?.length || 0} formats found.\n`);
+    }
+  } catch (err) {
+    console.log('⚠️ [YT INFO] NOTE: Info fetch failed.');
+    console.log('   Error Detail:', err.response?.data?.message || err.message, '\n');
+  }
+
   console.log('📋 TESTING COMPLETE.');
 }
 
