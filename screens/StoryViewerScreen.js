@@ -81,6 +81,28 @@ export default function StoryViewerScreen({ navigation }) {
   const [searchType, setSearchType] = useState('profile'); // 'profile' or 'link'
   const [selectedStory, setSelectedStory] = useState(null);
 
+  React.useEffect(() => {
+    if (!username) {
+      setStories([]);
+      setError(null);
+      return;
+    }
+    
+    if (username.length < 3) return;
+    
+    // Don't auto-fetch if it looks like a complex link
+    if (username.includes('instagram.com') || username.includes('http')) return;
+
+    const delayDebounceFn = setTimeout(() => {
+      // Only auto-fetch if not already loading the same thing
+      handleFetch();
+    }, 1000); // 1.0s delay is more comfortable for typing
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [username]);
+
+
+
   const handleFetch = async () => {
     if (!username) return;
     setLoading(true);
