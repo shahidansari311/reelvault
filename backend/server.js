@@ -187,7 +187,7 @@ function looksLikeYouTubeSignatureIssue(stderr) {
 // Mobile clients (ios, android) work best WITHOUT cookies on datacenters.
 // Web clients (web_embedded, tv) can use cookies but are more prone to NSig blocks.
 const YT_MOBILE_ARGS = [
-  '--extractor-args', 'youtube:player_client=ios,android',
+  '--extractor-args', 'youtube:player_client=ios,android;player_skip=web,web_embedded',
   '--force-ipv4',
   '--geo-bypass',
   '--no-check-certificates',
@@ -681,7 +681,11 @@ app.get('/status', (req, res) => {
         status: 'online', 
         version: stdout.trim(),
         ffmpeg: ffmpeg || 'missing',
-        authStatus: fs.existsSync(COOKIES_PATH) ? 'Authenticated (File)' : 'Auto-Auth (Warning: Browser auth is disabled on servers)',
+        authStatus: fs.existsSync(COOKIES_PATH) ? 'Authenticated (File)' : 'Auto-Auth',
+        ytQueries: {
+          mobile: YT_MOBILE_ARGS.join(' '),
+          web: YT_WEB_ARGS.join(' ')
+        },
         environment: process.env.NODE_ENV || 'production',
         nodeVersion: process.version,
         timestamp: new Date().toISOString(),
