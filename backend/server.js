@@ -183,14 +183,14 @@ function looksLikeYouTubeSignatureIssue(stderr) {
   );
 }
 
-// 🎥 YouTube Production Strategy (Single Stable Client)
+// 🎥 YouTube Recommended Combined Fix (Bypass n-Challenge)
 const YT_COMMON_ARGS = [
-  '--extractor-args', 'youtube:player_client=web',
+  '--extractor-args', 'youtube:player_client=android,ios',
   '--force-ipv4',
   '--no-check-certificates',
   '--geo-bypass',
-  '--add-header', 'Accept-Language: en-US,en;q=0.9',
-  '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
+  '--user-agent', 'com.google.android.youtube/17.31.35 (Linux; U; Android 11)',
+  '--add-header', 'Accept-Language:en-US,en;q=0.9'
 ];
 
 function buildYoutubeVideoOptions(info) {
@@ -282,8 +282,8 @@ app.post('/youtube/download', async (req, res) => {
 
     if (dlKind === 'video') {
       const h = Number(maxHeight || (String(quality).replace('p', '')) || 720);
-      // Robust format selection: try best mp4 up to height, fallback to anything
-      args.push('-f', `bestvideo[height<=${h}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${h}][ext=mp4]/best[ext=mp4]/best`);
+      // Combined Fix Format: Priority to mp4 merged best
+      args.push('-f', `best[height<=${h}][ext=mp4]/bestvideo[height<=${h}]+bestaudio/best`);
       args.push('--merge-output-format', 'mp4');
     } else {
       args.push('-x', '--audio-format', 'mp3', '--audio-quality', '192K');
