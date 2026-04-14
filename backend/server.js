@@ -167,31 +167,56 @@ function looksLikeYouTubeBotCheck(stderr) {
     s.includes('confirm you') ||
     s.includes('captcha') ||
     s.includes('verify that you') ||
-    s.includes('this helps protect our community')
+    s.includes('rate limit') ||
+    s.includes('429') ||
+    s.includes('too many requests')
   );
 }
 
-function looksLikeYouTubeSignatureIssue(stderr) {
-  const s = (stderr || '').toLowerCase();
-  return (
-    (s.includes('signature') && s.includes('failed')) ||
-    s.includes('nsig') ||
-    s.includes('some formats may be missing') ||
-    s.includes('only images are available') ||
-    s.includes('requested format is not available') ||
-    s.includes('challenge solving failed')
-  );
+// 🍪 Runtime Cookie Handler for Render
+function getCookiesPath() {
+  const COOKIE_FILE = '/tmp/youtube_cookies.txt';
+  try {
+    // Priority 1: Environment Variable (Base64 or Raw Netscape text)
+    if (process.env.YT_COOKIES) {
+      let content = process.env.YT_COOKIES;
+      // Detect if base64 encoded
+      if (content.length > 100 && !content.includes('\t')) {
+        content = Buffer.from(content, 'base64').toString('utf8');
+      }
+      fs.writeFileSync(COOKIE_FILE, content);
+      return COOKIE_FILE;
+    }
+    // Priority 2: Uploaded Secret File (Render)
+    const RENDER_SECRET = '/etc/secrets/youtube_cookies.txt';
+    if (fs.existsSync(RENDER_SECRET)) {
+      fs.copyFileSync(RENDER_SECRET, COOKIE_FILE);
+      return COOKIE_FILE;
+    }
+  } catch (e) {
+    console.error('Cookie Handler Error:', e.message);
+  }
+  return null;
 }
 
-// 🎥 YouTube Recommended Combined Fix (Bypass n-Challenge)
-const YT_COMMON_ARGS = [
-  '--extractor-args', 'youtube:player_client=android,ios',
-  '--force-ipv4',
-  '--no-check-certificates',
-  '--geo-bypass',
-  '--user-agent', 'com.google.android.youtube/17.31.35 (Linux; U; Android 11)',
-  '--add-header', 'Accept-Language:en-US,en;q=0.9'
-];
+// 🎥 Production Single-Strategy Config (Web Client + Anti-Blocking)
+const getCommonArgs = () => {
+  const args = [
+    '--extractor-args', 'youtube:player_client=web',
+    '--force-ipv4',
+    '--no-check-certificates',
+    '--geo-bypass',
+    '--sleep-interval', '3', // Reduce aggressive hits
+    '--max-sleep-interval', '8',
+    '--retries', '3',
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
+  ];
+  
+  const cookies = getCookiesPath();
+  if (cookies) args.push('--cookies', cookies);
+  
+  return args;
+};
 
 function buildYoutubeVideoOptions(info) {
   const formats = Array.isArray(info?.formats) ? info.formats : [];
@@ -229,13 +254,12 @@ app.post('/youtube/info', async (req, res) => {
   if (!isValidYouTubeUrl(url)) return res.status(400).json({ error: 'Invalid URL' });
 
   try {
-    // Single robust attempt with extended timeout
     const { stdout } = await runYtDlp([
       '--dump-json',
       '--no-playlist',
-      ...YT_COMMON_ARGS,
+      ...getCommonArgs(),
       url.trim()
-    ], { timeoutMs: 180000 }); // 3 min timeout for Render concurrency
+    ], { timeoutMs: 180000 });
 
     const info = JSON.parse(stdout.trim());
     return res.json({
@@ -246,11 +270,19 @@ app.post('/youtube/info', async (req, res) => {
       videoOptions: buildYoutubeVideoOptions(info),
     });
   } catch (e) {
-    const details = e.stderr || e.err?.message || 'Extraction Timed Out';
+    const details = e.stderr || e.err?.message || '';
     console.error('YouTube info error:', details);
+    
+    if (looksLikeYouTubeBotCheck(details)) {
+      return res.status(429).json({
+        error: 'YouTube Blocked Us',
+        message: 'The server IP is rate-limited. Update YT_COOKIES on Render Dashboard or try later.'
+      });
+    }
+
     return res.status(503).json({
       error: 'Extraction Failed',
-      message: 'YouTube is currently restricting server access. Please try again or check server health.',
+      message: 'YouTube changed its signature or player. Retrying might help.',
       details: process.env.NODE_ENV === 'development' ? details : undefined
     });
   }
@@ -270,12 +302,12 @@ app.post('/youtube/download', async (req, res) => {
   const finalPath = path.join('/tmp', `${baseName}.${targetExt}`);
 
   try {
-    let args = ['--no-playlist', ...YT_COMMON_ARGS, '-o', outputTemplate];
+    let args = ['--no-playlist', ...getCommonArgs(), '-o', outputTemplate];
 
     if (dlKind === 'video') {
       const h = Number(maxHeight || (String(quality).replace('p', '')) || 720);
-      // Combined Fix Format: Priority to mp4 merged best
-      args.push('-f', `best[height<=${h}][ext=mp4]/bestvideo[height<=${h}]+bestaudio/best`);
+      // Hardened format selection for server stability
+      args.push('-f', `best[height<=${h}][ext=mp4]/bestvideo[height<=${h}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best`);
       args.push('--merge-output-format', 'mp4');
     } else {
       args.push('-x', '--audio-format', 'mp3', '--audio-quality', '192K');
@@ -506,11 +538,8 @@ app.get('/status', (req, res) => {
         status: 'online', 
         version: stdout.trim(),
         ffmpeg: ffmpeg || 'missing',
-        authStatus: fs.existsSync(COOKIES_PATH) ? 'Authenticated (File)' : 'Auto-Auth',
-        ytQueries: {
-          mobile: YT_MOBILE_ARGS.join(' '),
-          web: YT_WEB_ARGS.join(' ')
-        },
+        authStatus: getCookiesPath() ? 'Cookie-Loaded (Anti-Bot Active)' : 'No-Auth (High risk of block)',
+        ytConfig: getCommonArgs().join(' '),
         environment: process.env.NODE_ENV || 'production',
         nodeVersion: process.version,
         timestamp: new Date().toISOString(),
