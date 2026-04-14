@@ -223,13 +223,6 @@ function resolveHeightForRequest(requestedHeight, info) {
   return bestUnder || videoHeights[0];
 }
 
-// YouTube: Fetch Info (yt-dlp)
-app.post('/youtube/info', async (req, res) => {
-  const { url } = req.body || {};
-  if (!isValidYouTubeUrl(url)) {
-    return res.status(400).json({ error: 'Invalid link', message: 'Please paste a valid YouTube link.' });
-  }
-
 // YouTube Info Endpoint
 app.post('/youtube/info', async (req, res) => {
   const { url } = req.body || {};
@@ -261,7 +254,6 @@ app.post('/youtube/info', async (req, res) => {
       details: process.env.NODE_ENV === 'development' ? details : undefined
     });
   }
-});
 });
 
 // YouTube: Download to server + return file URL
@@ -316,7 +308,6 @@ app.post('/youtube/download', async (req, res) => {
     console.error('YouTube download error:', details);
     return res.status(500).json({ error: 'Download Failed', message: 'Could not process video. YouTube might be blocking the request.' });
   }
-});
 });
 
 // 1. Download Reel Endpoint (Powered by yt-dlp)
