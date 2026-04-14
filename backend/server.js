@@ -184,10 +184,8 @@ function looksLikeYouTubeSignatureIssue(stderr) {
 }
 
 // 📱 YouTube Extraction Strategies:
-// Mobile clients (ios, android) work best WITHOUT cookies on datacenters.
-// Web clients (web_embedded, tv) can use cookies but are more prone to NSig blocks.
 const YT_MOBILE_ARGS = [
-  '--extractor-args', 'youtube:player_client=ios,android;player_skip=web,web_embedded',
+  '--extractor-args', 'youtube:player_client=ios,android,android_vr,mweb;player_skip=web,web_embedded',
   '--force-ipv4',
   '--geo-bypass',
   '--no-check-certificates',
@@ -196,12 +194,12 @@ const YT_MOBILE_ARGS = [
 ];
 
 const YT_WEB_ARGS = [
-  '--extractor-args', 'youtube:player_client=web_embedded,tv',
+  '--extractor-args', 'youtube:player_client=tv,web_embedded',
   '--force-ipv4',
   '--geo-bypass',
   '--no-check-certificates',
   '--add-header', 'Accept-Language: en-US,en;q=0.9',
-  '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+  '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
 ];
 
 function buildYoutubeVideoOptions(info) {
@@ -697,4 +695,10 @@ app.get('/status', (req, res) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`SaveX Server active on ${HOST}:${PORT}`);
+  // Diagnostics
+  exec('yt-dlp --version', (err, stdout) => console.log('YT-DLP Version:', stdout?.trim()));
+  exec('yt-dlp -v', (err, stdout, stderr) => {
+    const jsProviders = (stderr || '').split('\n').find(l => l.includes('JS Challenge Providers'));
+    if (jsProviders) console.log('🔍 Extraction Support:', jsProviders.trim());
+  });
 });

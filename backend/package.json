@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node server.js",
     "build": "npm install && (python3 -m pip install -U \"yt-dlp[default]\" || pip install -U \"yt-dlp[default]\" || echo 'Pip failed')",
-    "postinstall": "python3 -m pip install -U \"yt-dlp[default]\" || pip install -U \"yt-dlp[default]\" || echo 'Skipping yt-dlp update'",
+    "postinstall": "python3 -m pip install -U --pre \"yt-dlp[default]\" || pip install -U --pre \"yt-dlp[default]\" || echo 'Skipping yt-dlp update'",
     "dev": "nodemon server.js"
   },
   "engines": {
