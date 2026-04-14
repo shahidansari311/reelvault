@@ -184,12 +184,14 @@ function looksLikeYouTubeSignatureIssue(stderr) {
 }
 
 // 📱 YouTube Extraction Strategy:
-// 1. 'web_embedded' and 'tv' currently offer the best bypass for datacenter blocks.
+// 1. 'ios', 'android', 'web_embedded' and 'tv' currently offer the best bypass for datacenter blocks.
 // 2. '--force-ipv4' helps bypass blocks often applied to datacenter IPv6 ranges.
 const YT_CLIENT_ARGS = [
-  '--extractor-args', 'youtube:player_client=web_embedded,tv',
+  '--extractor-args', 'youtube:player_client=ios,android,web_embedded,tv',
   '--force-ipv4',
   '--geo-bypass',
+  '--no-check-certificates',
+  '--add-header', 'Accept-Language: en-US,en;q=0.9',
   '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
 ];
 
@@ -235,7 +237,19 @@ app.post('/youtube/info', async (req, res) => {
 
   try {
     const authArgs = fs.existsSync(YT_COOKIES_PATH) ? ['--cookies', YT_COOKIES_PATH] : [];
-    const { stdout } = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', ...YT_CLIENT_ARGS, ...authArgs, url.trim()], { timeoutMs: 30000 });
+    let result;
+    try {
+      result = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', ...YT_CLIENT_ARGS, ...authArgs, url.trim()], { timeoutMs: 30000 });
+    } catch (e) {
+      const errText = (e.stderr || '').toLowerCase();
+      if (authArgs.length > 0 && (errText.includes('cookies are no longer valid') || errText.includes('expired'))) {
+        console.warn('YouTube cookies expired/invalid. Retrying without cookies...');
+        result = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', ...YT_CLIENT_ARGS, url.trim()], { timeoutMs: 30000 });
+      } else {
+        throw e;
+      }
+    }
+    const { stdout } = result;
     const info = JSON.parse(stdout.trim());
     const videoId = info.id || extractYouTubeVideoId(url.trim());
     const embedUrl = videoId ? `https://www.youtube.com/embed/${videoId}?playsinline=1` : '';
@@ -323,7 +337,18 @@ app.post('/youtube/download', async (req, res) => {
   let infoJson = null;
   try {
     const authArgs = fs.existsSync(YT_COOKIES_PATH) ? ['--cookies', YT_COOKIES_PATH] : [];
-    const { stdout } = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', ...YT_CLIENT_ARGS, ...authArgs, cleanUrl], { timeoutMs: 30000 });
+    let result;
+    try {
+      result = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', ...YT_CLIENT_ARGS, ...authArgs, cleanUrl], { timeoutMs: 30000 });
+    } catch (e) {
+      const errText = (e.stderr || '').toLowerCase();
+      if (authArgs.length > 0 && (errText.includes('cookies are no longer valid') || errText.includes('expired'))) {
+        result = await runYtDlp(['--dump-json', '--no-playlist', '--skip-download', ...YT_CLIENT_ARGS, cleanUrl], { timeoutMs: 30000 });
+      } else {
+        throw e;
+      }
+    }
+    const { stdout } = result;
     const info = JSON.parse(stdout.trim());
     infoJson = info;
     title = info.title || '';
@@ -374,7 +399,18 @@ app.post('/youtube/download', async (req, res) => {
       ];
     }
 
-    await runYtDlp(args, { timeoutMs: 10 * 60 * 1000 });
+    try {
+      await runYtDlp(args, { timeoutMs: 10 * 60 * 1000 });
+    } catch (e) {
+      const errText = (e.stderr || '').toLowerCase();
+      if (authArgs.length > 0 && (errText.includes('cookies are no longer valid') || errText.includes('expired'))) {
+        console.warn('Download cookies expired. Retrying without cookies...');
+        const noAuthArgs = args.filter((a, i) => a !== '--cookies' && args[i-1] !== '--cookies');
+        await runYtDlp(noAuthArgs, { timeoutMs: 10 * 60 * 1000 });
+      } else {
+        throw e;
+      }
+    }
 
     if (!fs.existsSync(outputPath)) {
       // Fallback: try to find any file matching the baseName (yt-dlp can vary extension)
