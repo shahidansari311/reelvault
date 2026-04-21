@@ -199,16 +199,43 @@ function getCookiesPath() {
   return null;
 }
 
+// Cobalt-based Download Strategy (Free API for 1080p+ & Premium Support)
+async function downloadWithCobalt(videoUrl, videoQuality = '1080') {
+  try {
+    const response = await axios.post('https://api.cobalt.tools/api/json', {
+      url: videoUrl,
+      videoQuality: videoQuality,
+      filenameStyle: 'pretty'
+    }, {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'SaveX-Client/1.2'
+      },
+      timeout: 20000
+    });
+
+    if (response.data.status === 'stream' || response.data.status === 'redirect' || response.data.status === 'tunnel') {
+      return response.data.url;
+    }
+    return null;
+  } catch (err) {
+    console.error('Cobalt Engine Error:', err.message);
+    return null;
+  }
+}
+
 // 🎥 Production Single-Strategy Config (Web Client + Anti-Blocking)
 const getCommonArgs = () => {
   const args = [
-    '--extractor-args', 'youtube:player_client=web',
+    '--extractor-args', 'youtube:player_client=ios,web,android',
     '--force-ipv4',
     '--no-check-certificates',
     '--geo-bypass',
-    '--sleep-interval', '3', // Reduce aggressive hits
-    '--max-sleep-interval', '8',
-    '--retries', '3',
+    '--sleep-interval', '2', 
+    '--max-sleep-interval', '5',
+    '--retries', '5',
+    '--client-certificate', '', // Clear any stale certs
     '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
   ];
   
@@ -228,7 +255,7 @@ function buildYoutubeVideoOptions(info) {
   }
   return Array.from(heights)
     .sort((a, b) => b - a)
-    .map(h => ({ key: String(h), label: `${h}p`, maxHeight: h }));
+    .map(h => ({ key: String(h), label: h >= 1080 ? `${h}p Premium` : `${h}p`, maxHeight: h }));
 }
 
 function resolveHeightForRequest(requestedHeight, info) {
@@ -296,6 +323,25 @@ app.post('/youtube/download', async (req, res) => {
 
   const dlKind = kind || (format === 'mp3' ? 'audio' : 'video');
   const targetExt = dlKind === 'video' ? 'mp4' : 'mp3';
+  const h = Number(maxHeight || (String(quality).replace('p', '')) || 720);
+
+  // 🏁 Strategy 1: Try Cobalt (Free Premium API) for 1080p+ or if kind is audio
+  if (h >= 1080 || dlKind === 'audio') {
+    console.log(`Trying Cobalt for ${h}p download...`);
+    const cobaltUrl = await downloadWithCobalt(url.trim(), String(h));
+    if (cobaltUrl) {
+      console.log('Cobalt success!');
+      return res.json({
+        downloadUrl: cobaltUrl, // Cobalt URLs are usually direct or proxied streams
+        title: 'YouTube Download (Premium)',
+        success: true,
+        source: 'cobalt'
+      });
+    }
+    console.log('Cobalt failed or rate-limited, falling back to local engine.');
+  }
+
+  // 🏁 Strategy 2: Local yt-dlp
   const id = `${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
   const baseName = `savex_${id}`;
   const outputTemplate = path.join('/tmp', `${baseName}.%(ext)s`);
@@ -305,7 +351,6 @@ app.post('/youtube/download', async (req, res) => {
     let args = ['--no-playlist', ...getCommonArgs(), '-o', outputTemplate];
 
     if (dlKind === 'video') {
-      const h = Number(maxHeight || (String(quality).replace('p', '')) || 720);
       // Hardened format selection for server stability
       args.push('-f', `best[height<=${h}][ext=mp4]/bestvideo[height<=${h}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best`);
       args.push('--merge-output-format', 'mp4');
@@ -315,7 +360,7 @@ app.post('/youtube/download', async (req, res) => {
 
     args.push(url.trim());
 
-    console.log('Starting Download:', baseName);
+    console.log('Starting Local Download:', baseName);
     await runYtDlp(args, { timeoutMs: 300000 });
 
     if (!fs.existsSync(finalPath)) {
@@ -338,6 +383,18 @@ app.post('/youtube/download', async (req, res) => {
   } catch (e) {
     const details = e.stderr || e.err?.message || 'Download Error';
     console.error('YouTube download error:', details);
+    
+    // Final Strategy: Attempt Cobalt as absolute fallback even for lower qualities
+    const fallbackUrl = await downloadWithCobalt(url.trim(), String(h));
+    if (fallbackUrl) {
+      return res.json({
+        downloadUrl: fallbackUrl,
+        title: 'YouTube Download (Fallback)',
+        success: true,
+        source: 'cobalt'
+      });
+    }
+
     return res.status(500).json({ error: 'Download Failed', message: 'Could not process video. YouTube might be blocking the request.' });
   }
 });
