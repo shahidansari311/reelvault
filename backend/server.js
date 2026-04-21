@@ -280,12 +280,15 @@ app.post('/youtube/info', async (req, res) => {
   const { url } = req.body || {};
   if (!isValidYouTubeUrl(url)) return res.status(400).json({ error: 'Invalid URL' });
 
+  const cleanUrl = url.trim();
+
   try {
+    console.log('Fetching YouTube info locally...');
     const { stdout } = await runYtDlp([
       '--dump-json',
       '--no-playlist',
       ...getCommonArgs(),
-      url.trim()
+      cleanUrl
     ], { timeoutMs: 180000 });
 
     const info = JSON.parse(stdout.trim());
@@ -298,8 +301,37 @@ app.post('/youtube/info', async (req, res) => {
     });
   } catch (e) {
     const details = e.stderr || e.err?.message || '';
-    console.error('YouTube info error:', details);
+    console.error('Local YouTube info error:', details);
     
+    // 🏁 Strategy 2: Attempt Cobalt for Info Fallback
+    console.log('Attempting Cobalt Info fallback...');
+    try {
+      const response = await axios.post('https://api.cobalt.tools/api/json', {
+        url: cleanUrl,
+        videoQuality: '720' // Low res for fast metadata
+      }, {
+        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        timeout: 15000
+      });
+
+      if (response.data.status === 'stream' || response.data.status === 'redirect' || response.data.status === 'tunnel') {
+        const videoId = extractYouTubeVideoId(cleanUrl);
+        return res.json({
+          title: 'YouTube Video', // Cobalt doesn't always return title in JSON status
+          thumbnail: videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : '',
+          duration: 'Premium Quality',
+          videoId: videoId,
+          videoOptions: [
+            { key: '1080', label: '1080p Premium', maxHeight: 1080 },
+            { key: '720', label: '720p Premium', maxHeight: 720 },
+            { key: 'audio', label: 'MP3 Audio', maxHeight: 0 }
+          ],
+        });
+      }
+    } catch (cobaltErr) {
+      console.error('Cobalt Info Fallback Failed:', cobaltErr.message);
+    }
+
     if (looksLikeYouTubeBotCheck(details)) {
       return res.status(429).json({
         error: 'YouTube Blocked Us',
