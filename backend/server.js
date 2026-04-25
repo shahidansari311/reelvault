@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const axios = require('axios');
 const { exec } = require('child_process');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -199,30 +200,59 @@ function getCookiesPath() {
   return null;
 }
 
-// Cobalt-based Download Strategy (Free API for 1080p+ & Premium Support)
-async function downloadWithCobalt(videoUrl, videoQuality = '1080') {
-  try {
-    const response = await axios.post('https://api.cobalt.tools/api/json', {
-      url: videoUrl,
-      videoQuality: videoQuality,
-      filenameStyle: 'pretty'
-    }, {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'User-Agent': 'SaveX-Client/1.2'
-      },
-      timeout: 20000
-    });
+// Cobalt Instance Pool (ordered by reliability score)
+const COBALT_INSTANCES = [
+  'https://cobalt-api.meowing.de',
+  'https://cobalt-backend.canine.tools',
+  'https://capi.3kh0.net',
+  'https://kityune.imput.net',
+  'https://nachos.imput.net',
+  'https://sunny.imput.net',
+];
 
-    if (response.data.status === 'stream' || response.data.status === 'redirect' || response.data.status === 'tunnel') {
-      return response.data.url;
+// Cobalt-based Download Strategy (Multi-instance fallback for reliability)
+async function downloadWithCobalt(videoUrl, videoQuality = '1080', downloadMode = 'auto') {
+  for (const instance of COBALT_INSTANCES) {
+    try {
+      console.log(`Trying Cobalt instance: ${instance}`);
+      const response = await axios.post(`${instance}/`, {
+        url: videoUrl,
+        videoQuality: videoQuality,
+        youtubeVideoCodec: 'h264',
+        filenameStyle: 'pretty',
+        downloadMode: downloadMode,
+      }, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'SaveX-Client/1.3',
+        },
+        timeout: 25000,
+      });
+
+      const data = response.data;
+      
+      if (data.status === 'tunnel' || data.status === 'redirect') {
+        console.log(`Cobalt success via ${instance} (${data.status})`);
+        return data.url;
+      }
+      
+      if (data.status === 'picker' && Array.isArray(data.picker) && data.picker.length > 0) {
+        console.log(`Cobalt picker response via ${instance}, using first item`);
+        return data.picker[0].url;
+      }
+      
+      if (data.status === 'error') {
+        console.warn(`Cobalt ${instance} error:`, data.error?.code || 'unknown');
+        continue; // Try next instance
+      }
+    } catch (err) {
+      const status = err.response?.status;
+      console.warn(`Cobalt ${instance} failed (HTTP ${status || 'timeout'}):`, err.message);
+      continue; // Try next instance
     }
-    return null;
-  } catch (err) {
-    console.error('Cobalt Engine Error:', err.message);
-    return null;
   }
+  return null; // All instances failed
 }
 
 // 🎥 Production Single-Strategy Config (Web Client + Anti-Blocking)
@@ -278,7 +308,7 @@ function resolveHeightForRequest(requestedHeight, info) {
 // YouTube Info Endpoint
 app.post('/youtube/info', async (req, res) => {
   const { url } = req.body || {};
-  if (!isValidYouTubeUrl(url)) return res.status(400).json({ error: 'Invalid URL' });
+  if (!isValidYouTubeUrl(url)) return res.status(400).json({ error: 'Not a YouTube Link', message: 'That doesn\'t look like a YouTube link. Please paste a link from youtube.com or youtu.be.' });
 
   const cleanUrl = url.trim();
 
@@ -292,11 +322,13 @@ app.post('/youtube/info', async (req, res) => {
     ], { timeoutMs: 180000 });
 
     const info = JSON.parse(stdout.trim());
+    const videoId = info.id || extractYouTubeVideoId(cleanUrl);
     return res.json({
       title: info.title || '',
       thumbnail: info.thumbnail || '',
       duration: info.duration_string || secondsToDuration(info.duration),
-      videoId: info.id || '',
+      videoId: videoId,
+      embedUrl: videoId ? `https://www.youtube.com/embed/${videoId}` : '',
       videoOptions: buildYoutubeVideoOptions(info),
     });
   } catch (e) {
@@ -306,21 +338,16 @@ app.post('/youtube/info', async (req, res) => {
     // 🏁 Strategy 2: Attempt Cobalt for Info Fallback
     console.log('Attempting Cobalt Info fallback...');
     try {
-      const response = await axios.post('https://api.cobalt.tools/api/json', {
-        url: cleanUrl,
-        videoQuality: '720' // Low res for fast metadata
-      }, {
-        headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        timeout: 15000
-      });
-
-      if (response.data.status === 'stream' || response.data.status === 'redirect' || response.data.status === 'tunnel') {
+      const cobaltUrl = await downloadWithCobalt(cleanUrl, '720');
+      
+      if (cobaltUrl) {
         const videoId = extractYouTubeVideoId(cleanUrl);
         return res.json({
-          title: 'YouTube Video', // Cobalt doesn't always return title in JSON status
+          title: 'YouTube Video',
           thumbnail: videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : '',
           duration: 'Premium Quality',
           videoId: videoId,
+          embedUrl: videoId ? `https://www.youtube.com/embed/${videoId}` : '',
           videoOptions: [
             { key: '1080', label: '1080p Premium', maxHeight: 1080 },
             { key: '720', label: '720p Premium', maxHeight: 720 },
@@ -334,14 +361,14 @@ app.post('/youtube/info', async (req, res) => {
 
     if (looksLikeYouTubeBotCheck(details)) {
       return res.status(429).json({
-        error: 'YouTube Blocked Us',
-        message: 'The server IP is rate-limited. Update YT_COOKIES on Render Dashboard or try later.'
+        error: 'YouTube is Busy',
+        message: 'YouTube thinks we\'re sending too many requests right now. Please wait a minute or two and try again.'
       });
     }
 
     return res.status(503).json({
-      error: 'Extraction Failed',
-      message: 'YouTube changed its signature or player. Retrying might help.',
+      error: 'Could Not Load Video',
+      message: 'We\'re having trouble getting this video right now. This usually fixes itself — please try again in a moment.',
       details: process.env.NODE_ENV === 'development' ? details : undefined
     });
   }
@@ -351,27 +378,26 @@ app.post('/youtube/info', async (req, res) => {
 // YouTube Download Endpoint
 app.post('/youtube/download', async (req, res) => {
   const { url, kind, maxHeight, quality, format } = req.body || {};
-  if (!isValidYouTubeUrl(url)) return res.status(400).json({ error: 'Invalid URL' });
+  if (!isValidYouTubeUrl(url)) return res.status(400).json({ error: 'Not a YouTube Link', message: 'That doesn\'t look like a YouTube link. Please paste a link from youtube.com or youtu.be.' });
 
   const dlKind = kind || (format === 'mp3' ? 'audio' : 'video');
   const targetExt = dlKind === 'video' ? 'mp4' : 'mp3';
   const h = Number(maxHeight || (String(quality).replace('p', '')) || 720);
 
-  // 🏁 Strategy 1: Try Cobalt (Free Premium API) for 1080p+ or if kind is audio
-  if (h >= 1080 || dlKind === 'audio') {
-    console.log(`Trying Cobalt for ${h}p download...`);
-    const cobaltUrl = await downloadWithCobalt(url.trim(), String(h));
-    if (cobaltUrl) {
-      console.log('Cobalt success!');
-      return res.json({
-        downloadUrl: cobaltUrl, // Cobalt URLs are usually direct or proxied streams
-        title: 'YouTube Download (Premium)',
-        success: true,
-        source: 'cobalt'
-      });
-    }
-    console.log('Cobalt failed or rate-limited, falling back to local engine.');
+  // 🏁 Strategy 1: Try Cobalt first (multi-instance, most reliable)
+  console.log(`Trying Cobalt for ${dlKind} (${h}p)...`);
+  const cobaltMode = dlKind === 'audio' ? 'audio' : 'auto';
+  const cobaltUrl = await downloadWithCobalt(url.trim(), String(h), cobaltMode);
+  if (cobaltUrl) {
+    console.log('Cobalt success!');
+    return res.json({
+      downloadUrl: cobaltUrl,
+      title: 'YouTube Download (Premium)',
+      success: true,
+      source: 'cobalt'
+    });
   }
+  console.log('Cobalt failed or rate-limited, falling back to local engine.');
 
   // 🏁 Strategy 2: Local yt-dlp
   const id = `${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
@@ -427,7 +453,7 @@ app.post('/youtube/download', async (req, res) => {
       });
     }
 
-    return res.status(500).json({ error: 'Download Failed', message: 'Could not process video. YouTube might be blocking the request.' });
+    return res.status(500).json({ error: 'Download Did Not Work', message: 'We tried everything but couldn\'t download this video. YouTube may be blocking it. Please try again later or try a different video.' });
   }
 });
 
@@ -436,7 +462,7 @@ app.post('/download', async (req, res) => {
   const { reelUrl } = req.body;
 
   if (!reelUrl) {
-    return res.status(400).json({ error: 'Reel URL is required' });
+    return res.status(400).json({ error: 'No Link Provided', message: 'Please paste an Instagram Reel link first.' });
   }
 
   // 1. Sanitize the URL (Removed truncation as it breaks some valid links)
@@ -456,25 +482,25 @@ app.post('/download', async (req, res) => {
     if (error) {
       console.error('Extraction Error Details:', stderr || error.message);
       
-      let errorMsg = 'Extraction Failed';
-      let subMsg = 'We couldn\'t process this link. It might be broken or private.';
+      let errorMsg = 'Something Went Wrong';
+      let subMsg = 'We couldn\'t get this video. The link might be broken or the post may no longer exist. Please check the link and try again.';
       let statusCode = 500;
 
-      if (stderr.includes('Login required') || stderr.includes('Private')) {
-        errorMsg = 'Private Account';
-        subMsg = 'This account is private. We need authenticated access to download this.';
+      if (stderr.includes('Login required') || stderr.includes('Private') || stderr.includes('private') || stderr.includes('login_required')) {
+        errorMsg = 'This Account is Private';
+        subMsg = 'This Reel belongs to a private account. We can only download Reels from public accounts.';
         statusCode = 403;
-      } else if (stderr.includes('404') || stderr.includes('Not Found')) {
-        errorMsg = 'Video Not Found';
-        subMsg = 'This Reel might have been deleted or the link is incorrect.';
+      } else if (stderr.includes('404') || stderr.includes('Not Found') || stderr.includes('does not exist')) {
+        errorMsg = 'Reel Not Found';
+        subMsg = 'This Reel has been deleted or the link is wrong. Please double-check the link and try again.';
         statusCode = 404;
       } else if (error.killed) {
-        errorMsg = 'Server Timeout';
-        subMsg = 'Render taking too long to process. The video might be too large or Instagram is slow.';
+        errorMsg = 'Taking Too Long';
+        subMsg = 'The request is taking too long. This can happen with large videos or when Instagram is slow. Please try again.';
         statusCode = 504;
-      } else if (stderr.includes('Sign in') || stderr.includes('Rate limit')) {
-        errorMsg = 'Instagram Blocked Us';
-        subMsg = 'Instagram is temporarily blocking our server. Please try again later.';
+      } else if (stderr.includes('Sign in') || stderr.includes('Rate limit') || stderr.includes('429') || stderr.includes('too many')) {
+        errorMsg = 'Too Many Requests';
+        subMsg = 'Instagram is temporarily limiting our access. Please wait a minute or two and try again.';
         statusCode = 429;
       }
 
@@ -488,8 +514,8 @@ app.post('/download', async (req, res) => {
     const videoUrl = stdout.trim();
     if (!videoUrl) {
       return res.status(404).json({ 
-        error: 'Engine Busy', 
-        message: 'Instagram is blocking us right now. Please try again in a few minutes!' 
+        error: 'Could Not Get Video', 
+        message: 'We couldn\'t find a downloadable video at this link. Instagram might be blocking us right now — please try again in a few minutes.' 
       });
     }
 
@@ -517,21 +543,25 @@ app.get('/stories/:username', async (req, res) => {
     if (error) {
       console.warn('Story Extraction Issue:', stderr || error.message);
       
-      let errorMsg = 'No Stories Found';
-      let subMsg = 'This user hasn\'t posted any stories in the last 24 hours.';
+      let errorMsg = 'No Stories Right Now';
+      let subMsg = 'This user hasn\'t posted any stories in the last 24 hours. Stories only last 24 hours, so check back later!';
       let statusCode = 404;
 
-      if (stderr.includes('Login required') || stderr.includes('Private')) {
-        errorMsg = 'Private Account';
-        subMsg = 'This profile is private, so we can\'t see their stories.';
+      if (stderr.includes('Login required') || stderr.includes('login_required') || stderr.includes('Private') || stderr.includes('private')) {
+        errorMsg = 'This Account is Private';
+        subMsg = 'This is a private account, so their stories are hidden. You can only view stories from public accounts.';
         statusCode = 403;
-      } else if (stderr.includes('404')) {
-        errorMsg = 'User Not Found';
-        subMsg = 'We couldn\'t find anyone with that username.';
+      } else if (stderr.includes('404') || stderr.includes('Not Found') || stderr.includes('does not exist') || stderr.includes('User not found')) {
+        errorMsg = 'User Does Not Exist';
+        subMsg = 'We couldn\'t find anyone with that username on Instagram. Please check the spelling and try again.';
         statusCode = 404;
+      } else if (stderr.includes('Sign in') || stderr.includes('Rate limit') || stderr.includes('429') || stderr.includes('too many')) {
+        errorMsg = 'Too Many Requests';
+        subMsg = 'Instagram is temporarily limiting our access. Please wait a minute or two and try again.';
+        statusCode = 429;
       } else if (error.killed) {
-        errorMsg = 'Engine Timeout';
-        subMsg = 'The story extraction engine timed out. Please try again.';
+        errorMsg = 'Taking Too Long';
+        subMsg = 'The request is taking too long. Instagram might be slow right now. Please try again.';
         statusCode = 504;
       }
 
@@ -548,7 +578,10 @@ app.get('/stories/:username', async (req, res) => {
       }));
       return res.json(results);
     } else {
-      return res.status(404).json({ error: 'No active stories detected.' });
+      return res.status(404).json({ 
+        error: 'No Stories Right Now', 
+        message: 'This user hasn\'t posted any stories in the last 24 hours. Stories only last 24 hours, so check back later!' 
+      });
     }
   });
 });

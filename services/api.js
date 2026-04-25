@@ -55,7 +55,19 @@ export const fetchReelData = async (reelUrl) => {
     return data;
   } catch (error) {
     console.error('Error fetching reel:', error);
-    throw error;
+    const serverError = error.response?.data;
+    const status = error.response?.status;
+    const err = new Error(
+      serverError?.message ||
+      (status === 403 ? 'This Reel belongs to a private account. We can only download from public accounts.' :
+       status === 404 ? 'This Reel was not found. It may have been deleted or the link is wrong.' :
+       status === 429 ? 'Instagram is limiting our access right now. Please wait a minute and try again.' :
+       status === 504 ? 'The request took too long. Please try again.' :
+       !error.response ? 'Could not connect to the server. Please check your internet connection.' :
+       'Something went wrong while getting this Reel. Please try again.')
+    );
+    err.response = error.response;
+    throw err;
   }
 };
 
@@ -75,7 +87,19 @@ export const fetchStories = async (username) => {
     return data;
   } catch (error) {
     console.error('Error fetching stories:', error);
-    throw error;
+    const serverError = error.response?.data;
+    const status = error.response?.status;
+    const err = new Error(
+      serverError?.message ||
+      (status === 403 ? 'This is a private account. You can only view stories from public accounts.' :
+       status === 404 ? 'No stories found for this user. They may not have posted any recently.' :
+       status === 429 ? 'Instagram is limiting our access right now. Please wait a minute and try again.' :
+       status === 504 ? 'The request took too long. Please try again.' :
+       !error.response ? 'Could not connect to the server. Please check your internet connection.' :
+       'Something went wrong while getting stories. Please try again.')
+    );
+    err.response = error.response;
+    throw err;
   }
 };
 
@@ -85,7 +109,17 @@ export const fetchYouTubeInfo = async (url) => {
     return response.data;
   } catch (error) {
     console.error('Error fetching YouTube info:', error);
-    throw error;
+    const serverError = error.response?.data;
+    const status = error.response?.status;
+    const err = new Error(
+      serverError?.message ||
+      (status === 400 ? 'That doesn\'t look like a YouTube link. Please check and try again.' :
+       status === 429 ? 'YouTube is busy right now. Please wait a minute and try again.' :
+       !error.response ? 'Could not connect to the server. Please check your internet connection.' :
+       'We couldn\'t get info about this video. Please try again.')
+    );
+    err.response = error.response;
+    throw err;
   }
 };
 
@@ -102,7 +136,16 @@ export const requestYouTubeDownload = async ({ url, kind, maxHeight, audioBitrat
     return response.data;
   } catch (error) {
     console.error('Error requesting YouTube download:', error);
-    throw error;
+    const serverError = error.response?.data;
+    const status = error.response?.status;
+    const err = new Error(
+      serverError?.message ||
+      (status === 429 ? 'YouTube is busy right now. Please wait a minute and try again.' :
+       !error.response ? 'Could not connect to the server. Please check your internet connection.' :
+       'We couldn\'t download this video. Please try again.')
+    );
+    err.response = error.response;
+    throw err;
   }
 };
 

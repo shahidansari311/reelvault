@@ -43,13 +43,13 @@ export default function YouTubeDownloaderScreen({ navigation }) {
       setYoutubeUrl(text);
       setYtError(null);
     } else {
-      Alert.alert('Clipboard', 'No YouTube link found in clipboard.');
+      Alert.alert('Nothing to Paste', 'No YouTube link found in your clipboard. Copy a YouTube link first.');
     }
   };
 
   const handleFetch = async () => {
     if (!validateYouTubeUrl(youtubeUrl)) {
-      Alert.alert('Invalid link', 'Please paste a valid YouTube link.');
+      Alert.alert('Wrong Link', 'That doesn\'t look like a YouTube link. Please paste a link from youtube.com or youtu.be.');
       return;
     }
     Keyboard.dismiss();
@@ -61,8 +61,26 @@ export default function YouTubeDownloaderScreen({ navigation }) {
       const data = await fetchYouTubeInfo(youtubeUrl.trim());
       setYtInfo(data);
     } catch (err) {
-      const title = err.response?.data?.error || 'Network Error';
-      const message = err.response?.data?.message || 'Could not fetch video info. Please try again.';
+      const serverData = err.response?.data;
+      const status = err.response?.status;
+
+      let title = serverData?.error || 'Something Went Wrong';
+      let message = serverData?.message || err.message || 'We couldn\'t get info about this video. Please try again.';
+
+      if (status === 400) {
+        title = serverData?.error || 'Wrong Link';
+        message = serverData?.message || 'That doesn\'t look like a YouTube link. Please check and try again.';
+      } else if (status === 429) {
+        title = serverData?.error || 'YouTube is Busy';
+        message = serverData?.message || 'YouTube is limiting our access right now. Please wait a minute and try again.';
+      } else if (status === 503) {
+        title = serverData?.error || 'Could Not Load Video';
+        message = serverData?.message || 'We\'re having trouble reaching YouTube right now. Please try again in a moment.';
+      } else if (!err.response) {
+        title = 'No Internet';
+        message = 'Could not connect to the server. Please check your internet connection.';
+      }
+
       setYtError({ title, message });
     } finally {
       setYtLoading(false);
@@ -81,13 +99,13 @@ export default function YouTubeDownloaderScreen({ navigation }) {
       });
 
       if (!payload.downloadUrl) {
-        throw new Error('No downloadUrl returned from server');
+        throw new Error('The server did not return a download link. Please try again.');
       }
 
       const fileName = `youtube_${Date.now()}.${ext}`;
       const success = await downloadFile(payload.downloadUrl, fileName, (p) => setYtDownloadProgress(p));
       if (success) {
-        Alert.alert('Success', `${label} saved to your gallery!`);
+        Alert.alert('Saved!', `${label} saved to your gallery.`);
       }
     };
 
@@ -98,19 +116,32 @@ export default function YouTubeDownloaderScreen({ navigation }) {
     try {
       await attempt();
     } catch (err) {
-      const title = err.response?.data?.error || 'Download Failed';
-      const message = err.response?.data?.message || err.message || 'Could not download. Please try again.';
+      const serverData = err.response?.data;
+      const status = err.response?.status;
+
+      let title = serverData?.error || 'Download Did Not Work';
+      let message = serverData?.message || err.message || 'We couldn\'t download this video. Please try again.';
+
+      if (status === 429) {
+        title = serverData?.error || 'YouTube is Busy';
+        message = serverData?.message || 'YouTube is limiting our access right now. Please wait a minute and try again.';
+      } else if (!err.response) {
+        title = 'No Internet';
+        message = 'Could not connect to the server. Please check your internet connection.';
+      }
+
       Alert.alert(title, message, [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'OK', style: 'cancel' },
         {
-          text: 'Retry',
+          text: 'Try Again',
           onPress: async () => {
             try {
               setYtDownloading(true);
               setYtDownloadProgress(0);
               await attempt();
             } catch (e2) {
-              Alert.alert('Download Failed', e2.response?.data?.message || e2.message || 'Retry failed.');
+              const retryMsg = e2.response?.data?.message || e2.message || 'It still didn\'t work. Please try again later.';
+              Alert.alert('Still Not Working', retryMsg);
             } finally {
               setYtDownloading(false);
               setYtDownloadProgress(0);

@@ -13,10 +13,10 @@ export const downloadFile = async (url, fileName, onProgress) => {
     if (status !== 'granted') {
 
       Alert.alert(
-        'Permission Required',
-        'Allow storage access to download reels',
+        'Need Your Permission',
+        'We need access to your storage to save files. Please allow it in Settings.',
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: 'Not Now', style: 'cancel' },
           { text: 'Open Settings', onPress: () => Linking.openSettings() }
         ]
       );
@@ -44,7 +44,7 @@ export const downloadFile = async (url, fileName, onProgress) => {
     const result = await downloadResumable.downloadAsync();
     
     if (!result || result.status !== 200) {
-      throw new Error('Download failed');
+      throw new Error('The download did not complete. Please try again.');
     }
     if (onProgress) onProgress(1);
 
@@ -56,7 +56,7 @@ export const downloadFile = async (url, fileName, onProgress) => {
     return true;
   } catch (error) {
     console.error('Download error:', error);
-    Alert.alert('Download Failed', error.message || 'An error occurred while downloading the file.');
+    Alert.alert('Download Did Not Work', 'Something went wrong while saving the file. Please check your internet connection and try again.');
     return false;
   }
 };

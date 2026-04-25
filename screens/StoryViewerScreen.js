@@ -4,6 +4,7 @@ import {
   View, 
   Text, 
   TouchableOpacity, 
+  ActivityIndicator,
   Dimensions,
   Alert,
   Modal,
@@ -149,7 +150,7 @@ export default function StoryViewerScreen({ navigation }) {
         if (data && data.length > 0) {
           results = data;
         } else {
-          throw new Error('Private profiles or no active stories found');
+          throw new Error('No stories found for this user right now.');
         }
       }
 
@@ -162,10 +163,30 @@ export default function StoryViewerScreen({ navigation }) {
 
     } catch (err) {
       clearInterval(interval);
-      setError({ 
-        title: 'Extraction Failed', 
-        message: err.message || 'The user is private or the profile is inaccessible.' 
-      });
+      const serverData = err.response?.data;
+      const status = err.response?.status;
+
+      let title = serverData?.error || 'Something Went Wrong';
+      let message = serverData?.message || err.message || 'We couldn\'t get stories for this user. Please try again.';
+
+      if (status === 403) {
+        title = serverData?.error || 'This Account is Private';
+        message = serverData?.message || 'This is a private account. You can only view stories from public accounts.';
+      } else if (status === 404) {
+        title = serverData?.error || 'No Stories Right Now';
+        message = serverData?.message || 'This user hasn\'t posted any stories recently, or the username doesn\'t exist.';
+      } else if (status === 429) {
+        title = serverData?.error || 'Too Many Requests';
+        message = serverData?.message || 'Instagram is limiting our access right now. Please wait a minute and try again.';
+      } else if (status === 504) {
+        title = serverData?.error || 'Taking Too Long';
+        message = serverData?.message || 'The request took too long. Please try again.';
+      } else if (!err.response) {
+        title = 'No Internet';
+        message = 'Could not connect to the server. Please check your internet connection.';
+      }
+
+      setError({ title, message });
       setLoading(false);
     }
   };
@@ -179,7 +200,7 @@ export default function StoryViewerScreen({ navigation }) {
     const success = await downloadFile(item.url, fileName, (p) => setDownloadProgress(p));
     setDownloading(false);
     setDownloadProgress(0);
-    if (success) Alert.alert('Archive Success', 'Media saved to your vault.');
+    if (success) Alert.alert('Saved!', 'Media saved to your gallery.');
   };
 
   const renderHeader = () => (

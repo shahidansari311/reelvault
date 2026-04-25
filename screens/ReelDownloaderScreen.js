@@ -125,8 +125,29 @@ export default function ReelDownloaderScreen({ navigation, route }) {
       }, 500);
     } catch (err) {
       clearInterval(interval);
-      const errorTitle = err.response?.data?.error || 'Broken Link';
-      const errorMsg = err.response?.data?.message || 'This video could not be found. Please check the link and try again.';
+      const serverData = err.response?.data;
+      const status = err.response?.status;
+
+      let errorTitle = serverData?.error || 'Something Went Wrong';
+      let errorMsg = serverData?.message || err.message || 'We couldn\'t get this video. Please check the link and try again.';
+
+      if (status === 403) {
+        errorTitle = serverData?.error || 'This Account is Private';
+        errorMsg = serverData?.message || 'This Reel belongs to a private account. We can only download from public accounts.';
+      } else if (status === 404) {
+        errorTitle = serverData?.error || 'Reel Not Found';
+        errorMsg = serverData?.message || 'This Reel was not found. It may have been deleted or the link is wrong.';
+      } else if (status === 429) {
+        errorTitle = serverData?.error || 'Too Many Requests';
+        errorMsg = serverData?.message || 'Instagram is limiting our access right now. Please wait a minute and try again.';
+      } else if (status === 504) {
+        errorTitle = serverData?.error || 'Taking Too Long';
+        errorMsg = serverData?.message || 'The request took too long. Please try again.';
+      } else if (!err.response) {
+        errorTitle = 'No Internet';
+        errorMsg = 'Could not connect to the server. Please check your internet connection.';
+      }
+
       setError({ title: errorTitle, message: errorMsg });
       setLoading(false);
     }
@@ -146,7 +167,7 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     );
     
     if (success) {
-      Alert.alert('Success', 'Video saved to your gallery!');
+      Alert.alert('Saved!', 'Video saved to your gallery.');
     }
     setDownloading(false);
     setDownloadProgress(0);
