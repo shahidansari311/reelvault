@@ -282,7 +282,8 @@ const getCommonArgs = () => {
     '--sleep-interval', '2', 
     '--max-sleep-interval', '5',
     '--retries', '5',
-    '--extractor-args', 'youtube:player_client=web_creator'
+    '--extractor-args', 'youtube:player_client=android',
+    '--no-check-certificates'
   ];
   
   // Set Node path for solving n-challenges
@@ -863,10 +864,6 @@ app.listen(PORT, HOST, () => {
   console.log(`SaveX Server active on ${HOST}:${PORT}`);
   
   // Diagnostics
-  exec('node --version', (err, stdout) => {
-    console.log('Node.js version (for yt-dlp):', stdout?.trim() || 'NOT FOUND');
-  });
-  
   exec('yt-dlp --version', (err, stdout) => console.log('YT-DLP Version:', stdout?.trim()));
   exec('yt-dlp -v', (err, stdout, stderr) => {
     const jsProviders = (stderr || '').split('\n').find(l => l.includes('JS Challenge Providers'));

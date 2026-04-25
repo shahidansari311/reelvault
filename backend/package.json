@@ -4,7 +4,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "build": "curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && apt-get install -y nodejs && npm install && (python3 -m pip install -U --pre yt-dlp yt-dlp-get-pot-rustypipe -r requirements.txt || pip install -U --pre yt-dlp yt-dlp-get-pot-rustypipe -r requirements.txt || echo 'Pip failed')",
+    "build": "npm install && (python3 -m pip install -U --pre yt-dlp yt-dlp-get-pot-rustypipe -r requirements.txt || pip install -U --pre yt-dlp yt-dlp-get-pot-rustypipe -r requirements.txt || echo 'Pip failed')",
     "postinstall": "python3 -m pip install -U --pre yt-dlp yt-dlp-get-pot-rustypipe -r requirements.txt || pip install -U --pre yt-dlp yt-dlp-get-pot-rustypipe -r requirements.txt || echo 'Skipping yt-dlp update'",
     "dev": "nodemon server.js"
   },
