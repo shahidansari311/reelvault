@@ -282,7 +282,7 @@ const getCommonArgs = () => {
     '--sleep-interval', '2', 
     '--max-sleep-interval', '5',
     '--retries', '5',
-    '--extractor-args', 'youtube:player_client=ios'
+    '--extractor-args', 'youtube:player_client=web_creator'
   ];
   
   // Set Node path for solving n-challenges
@@ -290,8 +290,11 @@ const getCommonArgs = () => {
      args.push('--javascript-delay', '2');
   }
 
-  // NOTE: Cookies are deliberately NOT passed for YouTube iOS client
-  // as they are incompatible and not required for this extraction strategy.
+  const cookies = getCookiesPath();
+  if (cookies) {
+    console.log(`Using cookies from: ${cookies}`);
+    args.push('--cookies', cookies);
+  }
   
   return args;
 };
