@@ -861,7 +861,12 @@ app.get('/status', (req, res) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`SaveX Server active on ${HOST}:${PORT}`);
+  
   // Diagnostics
+  exec('node --version', (err, stdout) => {
+    console.log('Node.js version (for yt-dlp):', stdout?.trim() || 'NOT FOUND');
+  });
+  
   exec('yt-dlp --version', (err, stdout) => console.log('YT-DLP Version:', stdout?.trim()));
   exec('yt-dlp -v', (err, stdout, stderr) => {
     const jsProviders = (stderr || '').split('\n').find(l => l.includes('JS Challenge Providers'));
