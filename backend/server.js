@@ -303,15 +303,106 @@ function resolveHeightForRequest(requestedHeight, info) {
   return bestUnder || videoHeights[0];
 }
 
+// 🚀 --- NATIVE INNERTUBE & FFMPEG HELPERS --- 🚀
+
+// Native Innertube API Strategy (Android Client trick, bypasses Deciphering)
+async function fetchNativeInnertube(videoId) {
+  if (!videoId) return null;
+  try {
+    const response = await axios.post(
+      "https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
+      {
+        videoId: videoId,
+        context: {
+          client: {
+            clientName: "ANDROID",
+            clientVersion: "18.11.34",
+            androidSdkVersion: 30,
+            hl: "en",
+            gl: "US"
+          }
+        }
+      },
+      {
+        headers: { "Content-Type": "application/json" },
+        timeout: 10000
+      }
+    );
+
+    const data = response.data;
+    if (!data.streamingData) return null;
+    return data;
+  } catch (err) {
+    console.error("Innertube API Error:", err.message);
+    return null;
+  }
+}
+
+// Spawns and awaits FFmpeg
+function runFfmpeg(args, { timeoutMs = 5 * 60 * 1000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('ffmpeg', ['-y', ...args], { windowsHide: true });
+    let stderr = '';
+    const timeout = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch {}
+    }, timeoutMs);
+
+    child.stderr.on('data', (d) => { stderr += d.toString(); });
+
+    child.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timeout);
+      if (code === 0) return resolve();
+      reject(new Error(`FFmpeg exited with code ${code}: ${stderr}`));
+    });
+  });
+}
+
 // YouTube Info Endpoint
 app.post('/youtube/info', async (req, res) => {
   const { url } = req.body || {};
   if (!isValidYouTubeUrl(url)) return res.status(400).json({ error: 'Not a YouTube Link', message: 'That doesn\'t look like a YouTube link. Please paste a link from youtube.com or youtu.be.' });
 
   const cleanUrl = url.trim();
+  const videoId = extractYouTubeVideoId(cleanUrl);
 
+  // 🏁 Strategy 1: Native Innertube API (Fastest, zero deps)
+  if (videoId) {
+    console.log('Attempting Native Innertube API info fetch...');
+    const innertubeData = await fetchNativeInnertube(videoId);
+    if (innertubeData && innertubeData.videoDetails) {
+      console.log('Native Innertube Info Success!');
+      const details = innertubeData.videoDetails;
+      
+      const heights = new Set([360, 720]);
+      if (innertubeData.streamingData && innertubeData.streamingData.adaptiveFormats) {
+        innertubeData.streamingData.adaptiveFormats.forEach(f => {
+          if (f.height) heights.add(f.height);
+        });
+      }
+      const videoOptions = Array.from(heights)
+        .sort((a, b) => b - a)
+        .map(h => ({ key: String(h), label: h >= 1080 ? `${h}p Premium` : `${h}p`, maxHeight: h }))
+        .concat([{ key: 'audio', label: 'MP3 Audio', maxHeight: 0 }]);
+
+      return res.json({
+        title: details.title || '',
+        thumbnail: details.thumbnail?.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+        duration: secondsToDuration(details.lengthSeconds || 0),
+        videoId: videoId,
+        embedUrl: `https://www.youtube.com/embed/${videoId}`,
+        videoOptions: videoOptions,
+      });
+    }
+  }
+
+  // 🏁 Strategy 2: Local yt-dlp Fallback
   try {
-    console.log('Fetching YouTube info locally...');
+    console.log('Fetching YouTube info locally (yt-dlp)...');
     const { stdout } = await runYtDlp([
       '--dump-json',
       '--no-playlist',
@@ -395,13 +486,94 @@ app.post('/youtube/download', async (req, res) => {
       source: 'cobalt'
     });
   }
-  console.log('Cobalt failed or rate-limited, falling back to local engine.');
+  console.log('Cobalt failed or rate-limited, falling back to next engines.');
 
-  // 🏁 Strategy 2: Local yt-dlp
+  const videoId = extractYouTubeVideoId(url.trim());
   const id = `${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
   const baseName = `savex_${id}`;
-  const outputTemplate = path.join('/tmp', `${baseName}.%(ext)s`);
   const finalPath = path.join('/tmp', `${baseName}.${targetExt}`);
+
+  // 🏁 Strategy 2: Native Android Innertube + FFmpeg
+  console.log('Attempting Native Innertube direct download...');
+  const innertubeData = await fetchNativeInnertube(videoId);
+  if (innertubeData && innertubeData.streamingData) {
+    try {
+      const streaming = innertubeData.streamingData;
+      let videoUrl = null;
+      let audioUrl = null;
+
+      const audioStreams = (streaming.adaptiveFormats || []).filter(f => f.mimeType?.includes('audio') && f.url);
+      if (audioStreams.length > 0) {
+        audioStreams.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+        audioUrl = audioStreams[0].url;
+      } else {
+        const formats = (streaming.formats || []).filter(f => f.url);
+        if (formats.length > 0) audioUrl = formats[0].url;
+      }
+
+      if (dlKind === 'audio' && audioUrl) {
+         await runFfmpeg([
+            '-i', audioUrl,
+            '-vn',
+            '-ab', '192k',
+            '-ar', '44100',
+            finalPath
+         ]);
+      } else if (dlKind === 'video') {
+         const videoStreams = (streaming.adaptiveFormats || []).filter(f => f.mimeType?.includes('video') && f.url && f.height <= h);
+         if (videoStreams.length > 0) {
+            videoStreams.sort((a, b) => (b.height || 0) - (a.height || 0));
+            videoUrl = videoStreams[0].url;
+         } else {
+            const formats = (streaming.formats || []).filter(f => f.url && f.height <= h);
+            if (formats.length > 0) {
+               formats.sort((a, b) => (b.height || 0) - (a.height || 0));
+               videoUrl = formats[0].url;
+            } else if (audioUrl) {
+               // Fallback: Just grab any format with a valid URL if nothing matches criteria
+               const anyVids = (streaming.formats || []).filter(f => f.url);
+               if (anyVids.length > 0) videoUrl = anyVids[0].url;
+            }
+         }
+
+         if (videoUrl && audioUrl && videoUrl !== audioUrl) {
+             console.log('Muxing Innertube separate streams via FFmpeg...');
+             await runFfmpeg([
+                 '-i', videoUrl,
+                 '-i', audioUrl,
+                 '-c:v', 'copy',
+                 '-c:a', 'aac',
+                 finalPath
+             ]);
+         } else if (videoUrl) {
+             console.log('Saving Innertube pre-muxed stream via FFmpeg...');
+             await runFfmpeg([
+                 '-i', videoUrl,
+                 '-c:v', 'copy',
+                 '-c:a', 'copy',
+                 finalPath
+             ]);
+         }
+      }
+
+      if (fs.existsSync(finalPath)) {
+         const publicPath = path.join(YT_DOWNLOADS_DIR, `${baseName}.${targetExt}`);
+         fs.renameSync(finalPath, publicPath);
+         console.log('Innertube + FFmpeg download success!');
+         return res.json({
+            downloadUrl: makePublicDownloadUrl(req, `${baseName}.${targetExt}`),
+            title: 'YouTube Download',
+            success: true,
+            source: 'innertube'
+         });
+      }
+    } catch (e) {
+      console.error('Native Innertube Download Failed:', e.message);
+    }
+  }
+
+  // 🏁 Strategy 3: Local yt-dlp
+  const outputTemplate = path.join('/tmp', `${baseName}.%(ext)s`);
 
   try {
     let args = ['--no-playlist', ...getCommonArgs(), '-o', outputTemplate];
