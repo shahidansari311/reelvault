@@ -258,15 +258,13 @@ async function downloadWithCobalt(videoUrl, videoQuality = '1080', downloadMode 
 // 🎥 Production Single-Strategy Config (Web Client + Anti-Blocking)
 const getCommonArgs = () => {
   const args = [
-    '--extractor-args', 'youtube:player_client=ios,web,android',
     '--force-ipv4',
     '--no-check-certificates',
     '--geo-bypass',
     '--sleep-interval', '2', 
     '--max-sleep-interval', '5',
     '--retries', '5',
-    '--client-certificate', '', // Clear any stale certs
-    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
+    '--extractor-args', 'youtube:player_client=default,web,tv_embedded'
   ];
   
   const cookies = getCookiesPath();
