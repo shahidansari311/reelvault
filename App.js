@@ -10,6 +10,7 @@ import HomeScreen from './screens/HomeScreen';
 import ReelDownloaderScreen from './screens/ReelDownloaderScreen';
 import StoryViewerScreen from './screens/StoryViewerScreen';
 import YouTubeDownloaderScreen from './screens/YouTubeDownloaderScreen';
+import ImageDownloaderScreen from './screens/ImageDownloaderScreen';
 import { COLORS } from './constants/Theme';
 import api from './services/api';
 
@@ -98,6 +99,11 @@ export default function App() {
         <Tab.Screen name="Reels" component={ReelDownloaderScreen} />
         <Tab.Screen name="YouTube" component={YouTubeDownloaderScreen} />
         <Tab.Screen name="Stories" component={StoryViewerScreen} />
+        <Tab.Screen 
+          name="ImageDownloader" 
+          component={ImageDownloaderScreen} 
+          options={{ tabBarButton: () => null }}
+        />
       </Tab.Navigator>
     </NavigationContainer>
   );

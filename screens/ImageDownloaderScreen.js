@@ -16,38 +16,29 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Video, ResizeMode } from 'expo-av';
 import { 
   Download, 
   Link2 as LinkIcon, 
-  History as HistoryIcon, 
-  Trash2,
   Share2,
-  CheckCircle,
-  Play,
-  LayoutGrid,
   ChevronLeft,
-  Shield
+  Shield,
+  Image as ImageIcon
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 import { fetchReelData } from '../services/api';
 import { downloadFile } from '../utils/download';
 import { CustomInput } from '../components/CustomInput';
 import { ProgressBar } from '../components/ProgressBar';
-import { useIsFocused } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 
-export default function ReelDownloaderScreen({ navigation, route }) {
-  const isFocused = useIsFocused();
-
+export default function ImageDownloaderScreen({ navigation, route }) {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetchProgress, setFetchProgress] = useState(0);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
-  const [reelData, setReelData] = useState(null);
-  const [history, setHistory] = useState([]);
+  const [imageData, setImageData] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -56,7 +47,6 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     } else {
       checkClipboard();
     }
-    loadHistory();
   }, [route.params?.autoPaste]);
 
   const handlePaste = async () => {
@@ -66,34 +56,10 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     }
   };
 
-  const loadHistory = async () => {
-    try {
-      const saved = await AsyncStorage.getItem('reel_history');
-      if (saved) setHistory(JSON.parse(saved));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const saveToHistory = async (data) => {
-    try {
-      const newHistory = [data, ...history.filter(h => h.videoUrl !== data.videoUrl)].slice(0, 10);
-      setHistory(newHistory);
-      await AsyncStorage.setItem('reel_history', JSON.stringify(newHistory));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const clearHistory = async () => {
-    setHistory([]);
-    await AsyncStorage.removeItem('reel_history');
-  };
-
   const checkClipboard = async () => {
     const text = await Clipboard.getStringAsync();
     const isInstagram = text.includes('instagram.com/') || text.includes('instagr.am/');
-    if (isInstagram && (text.includes('/reel/') || text.includes('/reels/') || text.includes('/p/'))) {
+    if (isInstagram && (text.includes('/p/') || text.includes('/reel/'))) {
       setUrl(text);
     }
   };
@@ -103,7 +69,7 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     Keyboard.dismiss();
     setLoading(true);
     setFetchProgress(0);
-    setReelData(null);
+    setImageData(null);
     setError(null);
 
     // Simulated progress for extraction
@@ -115,12 +81,11 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     }, 400);
 
     try {
-      const data = await fetchReelData(url);
+      const data = await fetchReelData(url); // the backend handles images via yt-dlp as well
       clearInterval(interval);
       setFetchProgress(1);
       setTimeout(() => {
-        setReelData(data);
-        saveToHistory({ ...data, date: new Date().toISOString(), originalUrl: url });
+        setImageData(data);
         setLoading(false);
       }, 500);
     } catch (err) {
@@ -129,23 +94,14 @@ export default function ReelDownloaderScreen({ navigation, route }) {
       const status = err.response?.status;
 
       let errorTitle = serverData?.error || 'Something Went Wrong';
-      let errorMsg = serverData?.message || err.message || 'We couldn\'t get this video. Please check the link and try again.';
+      let errorMsg = serverData?.message || err.message || 'We couldn\'t get this image. Please check the link and try again.';
 
       if (status === 403) {
         errorTitle = serverData?.error || 'This Account is Private';
-        errorMsg = serverData?.message || 'This Reel belongs to a private account. We can only download from public accounts.';
+        errorMsg = serverData?.message || 'This Post belongs to a private account. We can only download from public accounts.';
       } else if (status === 404) {
-        errorTitle = serverData?.error || 'Reel Not Found';
-        errorMsg = serverData?.message || 'This Reel was not found. It may have been deleted or the link is wrong.';
-      } else if (status === 429) {
-        errorTitle = serverData?.error || 'Too Many Requests';
-        errorMsg = serverData?.message || 'Instagram is limiting our access right now. Please wait a minute and try again.';
-      } else if (status === 504) {
-        errorTitle = serverData?.error || 'Taking Too Long';
-        errorMsg = serverData?.message || 'The request took too long. Please try again.';
-      } else if (!err.response) {
-        errorTitle = 'No Internet';
-        errorMsg = 'Could not connect to the server. Please check your internet connection.';
+        errorTitle = serverData?.error || 'Post Not Found';
+        errorMsg = serverData?.message || 'This Post was not found. It may have been deleted or the link is wrong.';
       }
 
       setError({ title: errorTitle, message: errorMsg });
@@ -155,30 +111,30 @@ export default function ReelDownloaderScreen({ navigation, route }) {
 
 
   const handleDownload = async () => {
-    if (!reelData?.videoUrl) return;
+    if (!imageData?.videoUrl) return; // Note: videoUrl property contains the image link from the generic API
     setDownloading(true);
     setDownloadProgress(0);
     
-    const fileName = `reel_${Date.now()}.mp4`;
+    const fileName = `image_${Date.now()}.jpg`;
     const success = await downloadFile(
-      reelData.videoUrl, 
+      imageData.videoUrl, 
       fileName, 
       (progress) => setDownloadProgress(progress)
     );
     
     if (success) {
-      Alert.alert('Saved!', 'Video saved to your gallery.');
+      Alert.alert('Saved!', 'Image saved to your gallery.');
     }
     setDownloading(false);
     setDownloadProgress(0);
   };
 
   const handleShare = async () => {
-    if (!reelData?.videoUrl) return;
+    if (!imageData?.videoUrl) return;
     try {
       await Share.share({
-        message: `Check out this Reel I found via SaveX! \n\n${url}`,
-        url: reelData.videoUrl
+        message: `Check out this Image I found via SaveX! \n\n${url}`,
+        url: imageData.videoUrl
       });
     } catch (error) {
       console.error(error);
@@ -215,24 +171,24 @@ export default function ReelDownloaderScreen({ navigation, route }) {
         {/* Title Section */}
         <View style={styles.heroSection}>
           <Text style={styles.heroTitle}>
-            Download <Text style={{ fontStyle: 'italic', fontWeight: '400', color: COLORS.primary }}>Reel.</Text>
+            Download <Text style={{ fontStyle: 'italic', fontWeight: '400', color: COLORS.primary }}>Image.</Text>
           </Text>
           <Text style={styles.heroSub}>
-            Vault your favorite cinematic moments in high-definition. Simply paste the link below to begin the extraction.
+            Vault your favorite photo posts in high-definition. Simply paste the link below to begin the extraction.
           </Text>
           
           <TouchableOpacity 
             style={styles.switchModeBtn}
-            onPress={() => navigation.navigate('ImageDownloader')}
+            onPress={() => navigation.navigate('Reels')}
           >
-            <Text style={styles.switchModeText}>📸 Download Image Post Instead</Text>
+            <Text style={styles.switchModeText}>🎥 Download Reel Instead</Text>
           </TouchableOpacity>
         </View>
 
         {/* Input Card */}
         <View style={styles.extractionCard}>
           <CustomInput
-            placeholder="https://www.instagram.com/reel/..."
+            placeholder="https://www.instagram.com/p/..."
             value={url}
             onChangeText={(text) => {
               setUrl(text);
@@ -255,13 +211,13 @@ export default function ReelDownloaderScreen({ navigation, route }) {
             {loading ? (
               <ActivityIndicator color="#000" size="small" />
             ) : (
-              <Text style={styles.fetchBtnText}>EXTRACT MEDIA</Text>
+              <Text style={styles.fetchBtnText}>EXTRACT IMAGE</Text>
             )}
           </TouchableOpacity>
 
           {loading && (
             <View style={{ marginTop: 24 }}>
-              <ProgressBar progress={fetchProgress} label="Extracting Reel" />
+              <ProgressBar progress={fetchProgress} label="Extracting Image" />
             </View>
           )}
 
@@ -279,36 +235,29 @@ export default function ReelDownloaderScreen({ navigation, route }) {
 
 
         {/* Preview & Metadata */}
-        {reelData && (
+        {imageData && (
           <View style={styles.previewContainer}>
             <View style={styles.previewFrame}>
-              {reelData.videoUrl ? (
-                <Video
-                  key={reelData.videoUrl} // Force fresh player instance
-                  source={{ uri: reelData.videoUrl }}
-                  rate={1.0}
-                  volume={1.0}
-                  isMuted={false}
-                  resizeMode={ResizeMode.COVER}
-                  shouldPlay={isFocused && !downloading}
-                  isLooping
-                  style={styles.videoPlayer}
-                  useNativeControls={!downloading}
+              {imageData.videoUrl ? (
+                <Image
+                  source={{ uri: imageData.videoUrl }}
+                  style={styles.imagePlayer}
+                  resizeMode="contain"
                 />
               ) : (
                 <View style={styles.thumbnailPlaceholder}>
-                  <Play color={COLORS.text} size={40} />
+                  <ImageIcon color={COLORS.text} size={40} />
                 </View>
               )}
             </View>
 
 
             {downloading && (
-              <ProgressBar progress={downloadProgress} label="Downloading Reel" />
+              <ProgressBar progress={downloadProgress} label="Downloading Image" />
             )}
 
             <View style={styles.metaCard}>
-              <Text style={styles.metaTitle}>{reelData.title || 'Extracted Reel'}</Text>
+              <Text style={styles.metaTitle}>{imageData.title || 'Extracted Image'}</Text>
               
               <TouchableOpacity 
                 style={[styles.downloadActionBtn, downloading && { opacity: 0.5, backgroundColor: COLORS.textSecondary }]}
@@ -321,7 +270,7 @@ export default function ReelDownloaderScreen({ navigation, route }) {
                   <Download color="#000" size={18} style={{ marginRight: 10 }} />
                 )}
                 <Text style={styles.downloadActionText}>
-                  {downloading ? `Downloading ${Math.round(downloadProgress * 100)}%` : 'Download Reel'}
+                  {downloading ? `Downloading ${Math.round(downloadProgress * 100)}%` : 'Download Image'}
                 </Text>
               </TouchableOpacity>
 
@@ -341,7 +290,6 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     </LinearGradient>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {
@@ -399,31 +347,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.glassBorder,
     marginBottom: 40,
   },
-  inputBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#000',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    height: 60,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 1)',
-  },
-  input: {
-    flex: 1,
-    color: COLORS.text,
-    fontSize: 14,
-    marginHorizontal: 12,
-    height: '100%',
-  },
-  pasteBubbleBtn: {
-    backgroundColor: 'rgba(55, 51, 51, 0.83)',
-    height: 36,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   inlinePasteBtn: {
     backgroundColor: 'rgba(255, 255, 255, 0.26)',
     height: 34,
@@ -469,9 +392,14 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     ...SHADOWS.glass,
   },
-  videoPlayer: {
+  imagePlayer: {
     width: '100%',
     height: '100%',
+  },
+  thumbnailPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    flex: 1,
   },
   metaCard: {
     backgroundColor: COLORS.surface,
@@ -480,7 +408,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.glassBorder,
     marginBottom: 24,
-    alignItems: 'center', // Center content horizontally
+    alignItems: 'center',
   },
   metaTitle: {
     color: COLORS.text,
@@ -520,41 +448,6 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     letterSpacing: 2,
   },
-  creatorBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    padding: 20,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-  },
-  creatorAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-  },
-  creatorInfo: {
-    marginLeft: 16,
-  },
-  creatorNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  creatorName: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  creatorDetail: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    marginTop: 2,
-  },
-  emptyHistoryText: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
-  },
   errorBubble: {
     backgroundColor: 'rgba(255,107,107,0.05)',
     borderRadius: 20,
@@ -580,5 +473,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
-
 });
