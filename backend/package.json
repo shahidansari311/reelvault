@@ -4,8 +4,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "build": "npm install && (python3 -m pip install -r requirements.txt || pip install -r requirements.txt || echo 'Pip failed')",
-    "postinstall": "python3 -m pip install -r requirements.txt || pip install -r requirements.txt || echo 'Skipping yt-dlp update'",
+    "build": "npm install && (python3 -m pip install -U --pre yt-dlp yt-dlp-get-pot-rustypipe -r requirements.txt || pip install -U --pre yt-dlp yt-dlp-get-pot-rustypipe -r requirements.txt || echo 'Pip failed')",
+    "postinstall": "python3 -m pip install -U --pre yt-dlp yt-dlp-get-pot-rustypipe -r requirements.txt || pip install -U --pre yt-dlp yt-dlp-get-pot-rustypipe -r requirements.txt || echo 'Skipping yt-dlp update'",
     "dev": "nodemon server.js"
   },
   "engines": {
