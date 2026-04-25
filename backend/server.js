@@ -16,6 +16,7 @@ const COOKIES_TMP = '/tmp/instagram_cookies.txt';
 
 const YT_COOKIES_LOCAL = path.join(__dirname, 'youtube_cookies.txt');
 const YT_COOKIES_RENDER = '/etc/secrets/youtube_cookies.txt';
+const YT_COOKIES_TXT_RENDER = '/etc/secrets/cookies.txt';
 const YT_COOKIES_TMP = '/tmp/youtube_cookies.txt';
 
 // 🍪 Priority: Writable /tmp File (Copied from Render) > Local File
@@ -188,10 +189,16 @@ function getCookiesPath() {
       fs.writeFileSync(COOKIE_FILE, content);
       return COOKIE_FILE;
     }
-    // Priority 2: Uploaded Secret File (Render)
-    const RENDER_SECRET = '/etc/secrets/youtube_cookies.txt';
-    if (fs.existsSync(RENDER_SECRET)) {
-      fs.copyFileSync(RENDER_SECRET, COOKIE_FILE);
+    // Priority 2: Uploaded Secret File (Render) - cookies.txt or youtube_cookies.txt
+    const RENDER_SECRET_1 = '/etc/secrets/cookies.txt';
+    const RENDER_SECRET_2 = '/etc/secrets/youtube_cookies.txt';
+    
+    if (fs.existsSync(RENDER_SECRET_1)) {
+      fs.copyFileSync(RENDER_SECRET_1, COOKIE_FILE);
+      return COOKIE_FILE;
+    }
+    if (fs.existsSync(RENDER_SECRET_2)) {
+      fs.copyFileSync(RENDER_SECRET_2, COOKIE_FILE);
       return COOKIE_FILE;
     }
   } catch (e) {
@@ -209,6 +216,8 @@ const COBALT_INSTANCES = [
   'https://nachos.imput.net',
   'https://sunny.imput.net',
 ];
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Cobalt-based Download Strategy (Multi-instance fallback for reliability)
 async function downloadWithCobalt(videoUrl, videoQuality = '1080', downloadMode = 'auto') {
@@ -243,16 +252,23 @@ async function downloadWithCobalt(videoUrl, videoQuality = '1080', downloadMode 
       }
       
       if (data.status === 'error') {
-        console.warn(`Cobalt ${instance} error:`, data.error?.code || 'unknown');
-        continue; // Try next instance
+        console.warn(`Cobalt ${instance} returned logic error:`, data.error?.code || 'unknown');
+        await sleep(1000);
+        continue;
       }
     } catch (err) {
       const status = err.response?.status;
       console.warn(`Cobalt ${instance} failed (HTTP ${status || 'timeout'}):`, err.message);
-      continue; // Try next instance
+      
+      // If 400 or 403, it's likely a block or bad request, wait a bit and move on
+      if (status === 400 || status === 403 || status === 429) {
+        console.log(`Gracefully skipping ${instance} due to ${status}`);
+        await sleep(1000);
+      }
+      continue;
     }
   }
-  return null; // All instances failed
+  return null;
 }
 
 // 🎥 Production Single-Strategy Config (Web Client + Anti-Blocking)
@@ -267,8 +283,16 @@ const getCommonArgs = () => {
     '--extractor-args', 'youtube:player_client=android,web;player_skip=configs,webpage'
   ];
   
+  // Set Node path for solving n-challenges
+  if (process.env.NODE_PATH) {
+     args.push('--javascript-delay', '2');
+  }
+
   const cookies = getCookiesPath();
-  if (cookies) args.push('--cookies', cookies);
+  if (cookies) {
+    console.log(`Using cookies from: ${cookies}`);
+    args.push('--cookies', cookies);
+  }
   
   return args;
 };
@@ -580,7 +604,7 @@ app.post('/youtube/download', async (req, res) => {
 
     if (dlKind === 'video') {
       // Hardened format selection for server stability
-      args.push('-f', `best[height<=${h}][ext=mp4]/bestvideo[height<=${h}][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best`);
+      args.push('-f', `bestvideo[height<=${h}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${h}][ext=mp4]/bestvideo+bestaudio/best`);
       args.push('--merge-output-format', 'mp4');
     } else {
       args.push('-x', '--audio-format', 'mp3', '--audio-quality', '192K');

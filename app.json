@@ -30,8 +30,6 @@
       "package": "com.shahid310.reelvault",
       "usesCleartextTraffic": true
     },
-
-
     "web": {
       "favicon": "./assets/favicon.png"
     },
@@ -43,9 +41,9 @@
           "savePhotosPermission": "Allow saving media to your gallery",
           "isAccessMediaLocationEnabled": true
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
-
     "extra": {
       "eas": {
         "projectId": "c1a6dfb7-4226-4623-96b1-614de6690392"

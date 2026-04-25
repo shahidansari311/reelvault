@@ -8,6 +8,7 @@ import {
   Alert,
   Keyboard,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
@@ -34,6 +35,7 @@ export default function YouTubeDownloaderScreen({ navigation }) {
   const [ytInfo, setYtInfo] = useState(null);
   const [ytError, setYtError] = useState(null);
   const [audioBitrate, setAudioBitrate] = useState('192');
+  const [showFormatModal, setShowFormatModal] = useState(false);
 
   const validateYouTubeUrl = (u) => /(youtube\.com|youtu\.be)\//i.test((u || '').trim());
 
@@ -91,6 +93,7 @@ export default function YouTubeDownloaderScreen({ navigation }) {
     if (!validateYouTubeUrl(youtubeUrl) || ytDownloading) return;
 
     const attempt = async () => {
+      setShowFormatModal(false);
       const payload = await requestYouTubeDownload({
         url: youtubeUrl.trim(),
         kind,
@@ -103,7 +106,17 @@ export default function YouTubeDownloaderScreen({ navigation }) {
       }
 
       const fileName = `youtube_${Date.now()}.${ext}`;
-      const success = await downloadFile(payload.downloadUrl, fileName, (p) => setYtDownloadProgress(p));
+      const success = await downloadFile(
+        payload.downloadUrl, 
+        fileName, 
+        (p) => setYtDownloadProgress(p),
+        {
+          title: ytInfo?.title || 'YouTube Video',
+          platform: 'youtube',
+          format: label,
+          thumbnail: ytInfo?.thumbnail || null,
+        }
+      );
       if (success) {
         Alert.alert('Saved!', `${label} saved to your gallery.`);
       }
@@ -264,8 +277,29 @@ export default function YouTubeDownloaderScreen({ navigation }) {
             <View style={styles.metaCard}>
               <Text style={styles.metaTitle}>{ytInfo.title || 'YouTube Video'}</Text>
               {!!ytInfo.duration && <Text style={styles.metaSubtitle}>Duration: {ytInfo.duration}</Text>}
+              
+              <TouchableOpacity
+                style={styles.openModalBtn}
+                onPress={() => setShowFormatModal(true)}
+              >
+                <Text style={styles.openModalBtnText}>Choose Download Format</Text>
+              </TouchableOpacity>
             </View>
+          </View>
+        ) : null}
+      </ScrollView>
 
+      <Modal
+        visible={showFormatModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowFormatModal(false)}
+      >
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowFormatModal(false)} activeOpacity={1} />
+        <View style={styles.bottomSheet}>
+          <View style={styles.sheetHandle} />
+          
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
             <View style={styles.formatsCard}>
               <Text style={styles.formatsSectionTitle}>Video</Text>
               <Text style={styles.formatsHint}>Tap a quality to download MP4.</Text>
@@ -318,9 +352,9 @@ export default function YouTubeDownloaderScreen({ navigation }) {
                 <Text style={styles.audioDownloadBtnText}>Download MP3</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        ) : null}
-      </ScrollView>
+          </ScrollView>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -443,11 +477,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   formatsCard: {
-    backgroundColor: 'rgba(0, 0, 0, 0.88)',
-    borderRadius: 28,
     padding: 20,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
   },
   formatsSectionTitle: {
     color: COLORS.text,
@@ -547,5 +577,46 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.6)',
     fontSize: 12,
     lineHeight: 18,
+  },
+  openModalBtn: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 20,
+    marginTop: 20,
+    width: '100%',
+    alignItems: 'center',
+    ...SHADOWS.primary,
+  },
+  openModalBtnText: {
+    color: '#000',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  modalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  bottomSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#111',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    maxHeight: '80%',
+    paddingTop: 10,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  sheetHandle: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignSelf: 'center',
+    marginBottom: 10,
   },
 });

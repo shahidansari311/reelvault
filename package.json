@@ -21,6 +21,7 @@
     "expo-file-system": "~19.0.21",
     "expo-linear-gradient": "~15.0.8",
     "expo-media-library": "~18.2.1",
+    "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
     "lucide-react-native": "^1.8.0",
     "react": "19.1.0",

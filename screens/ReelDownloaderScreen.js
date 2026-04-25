@@ -12,6 +12,7 @@ import {
   Image,
   Dimensions,
   ScrollView,
+  Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
@@ -27,7 +28,9 @@ import {
   Play,
   LayoutGrid,
   ChevronLeft,
-  Shield
+  Shield,
+  Video as VideoIcon,
+  Image as ImageIcon
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 import { fetchReelData } from '../services/api';
@@ -37,6 +40,89 @@ import { ProgressBar } from '../components/ProgressBar';
 import { useIsFocused } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
+
+const PreviewCard = ({ reelData, downloading, downloadProgress, handleDownload, handleShare, isFocused }) => {
+  const isVideo = reelData.videoUrl.includes('.mp4') || reelData.videoUrl.includes('video');
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const scaleAnim = React.useRef(new Animated.Value(0.95)).current;
+  
+  React.useEffect(() => {
+    fadeAnim.setValue(0);
+    scaleAnim.setValue(0.95);
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.spring(scaleAnim, { toValue: 1, friction: 6, useNativeDriver: true })
+    ]).start();
+  }, [reelData]);
+
+  return (
+    <Animated.View style={[styles.previewContainer, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
+      <View style={styles.previewFrame}>
+        {isVideo ? (
+          <Video
+            key={reelData.videoUrl} 
+            source={{ uri: reelData.videoUrl }}
+            rate={1.0}
+            volume={1.0}
+            isMuted={false}
+            resizeMode={ResizeMode.COVER}
+            shouldPlay={isFocused && !downloading}
+            isLooping
+            style={styles.videoPlayer}
+            useNativeControls={!downloading}
+          />
+        ) : (
+          <Image
+            source={{ uri: reelData.videoUrl }}
+            style={styles.videoPlayer}
+            resizeMode="contain"
+          />
+        )}
+      </View>
+
+      {downloading && (
+        <ProgressBar progress={downloadProgress} label={`Downloading ${isVideo ? 'Video' : 'Photo'}`} />
+      )}
+
+      <LinearGradient colors={['rgba(20,20,25,0.8)', 'rgba(10,10,15,0.95)']} style={styles.metaCard}>
+        <View style={styles.metaHeader}>
+          <View style={styles.metaIconContainer}>
+            {isVideo ? <VideoIcon color={COLORS.primary} size={20} /> : <ImageIcon color={COLORS.primary} size={20} />}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.metaTitle} numberOfLines={1}>{reelData.title || (isVideo ? 'Extracted Video' : 'Extracted Photo')}</Text>
+            <Text style={styles.metaSubtitle}>{isVideo ? 'High-Definition MP4' : 'Original JPG Image'}</Text>
+          </View>
+        </View>
+        
+        <View style={styles.actionGrid}>
+          <TouchableOpacity 
+            style={[styles.downloadActionBtn, downloading && { opacity: 0.5, backgroundColor: COLORS.textSecondary }]}
+            onPress={handleDownload}
+            disabled={downloading}
+          >
+            {downloading ? (
+              <ActivityIndicator color="#000" size="small" style={{ marginRight: 10 }} />
+            ) : (
+              <Download color="#000" size={18} style={{ marginRight: 10 }} />
+            )}
+            <Text style={styles.downloadActionText}>
+              {downloading ? `SAVING ${Math.round(downloadProgress * 100)}%` : `SAVE ${isVideo ? 'VIDEO' : 'PHOTO'}`}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.shareActionBtn, downloading && { opacity: 0.5 }]} 
+            onPress={handleShare}
+            disabled={downloading}
+          >
+            <Share2 color={COLORS.text} size={20} />
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+    </Animated.View>
+  );
+};
 
 export default function ReelDownloaderScreen({ navigation, route }) {
   const isFocused = useIsFocused();
@@ -159,15 +245,23 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     setDownloading(true);
     setDownloadProgress(0);
     
-    const fileName = `reel_${Date.now()}.mp4`;
+    const isVideo = reelData.videoUrl.includes('.mp4') || reelData.videoUrl.includes('video');
+    const ext = isVideo ? 'mp4' : 'jpg';
+    const fileName = `ig_media_${Date.now()}.${ext}`;
+    
     const success = await downloadFile(
       reelData.videoUrl, 
       fileName, 
-      (progress) => setDownloadProgress(progress)
+      (progress) => setDownloadProgress(progress),
+      {
+        title: reelData.title || (isVideo ? 'Instagram Reel' : 'Instagram Photo'),
+        platform: 'instagram',
+        format: isVideo ? 'MP4 Video' : 'JPG Image'
+      }
     );
     
     if (success) {
-      Alert.alert('Saved!', 'Video saved to your gallery.');
+      Alert.alert('Saved!', `${isVideo ? 'Video' : 'Photo'} saved to your gallery.`);
     }
     setDownloading(false);
     setDownloadProgress(0);
@@ -215,24 +309,17 @@ export default function ReelDownloaderScreen({ navigation, route }) {
         {/* Title Section */}
         <View style={styles.heroSection}>
           <Text style={styles.heroTitle}>
-            Download <Text style={{ fontStyle: 'italic', fontWeight: '400', color: COLORS.primary }}>Reel.</Text>
+            Download <Text style={{ fontStyle: 'italic', fontWeight: '400', color: COLORS.primary }}>Media.</Text>
           </Text>
           <Text style={styles.heroSub}>
-            Vault your favorite cinematic moments in high-definition. Simply paste the link below to begin the extraction.
+            Vault your favorite cinematic reels and photo posts in high-definition. Simply paste any Instagram link below to begin the extraction.
           </Text>
-          
-          <TouchableOpacity 
-            style={styles.switchModeBtn}
-            onPress={() => navigation.navigate('ImageDownloader')}
-          >
-            <Text style={styles.switchModeText}>📸 Download Image Post Instead</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Input Card */}
         <View style={styles.extractionCard}>
           <CustomInput
-            placeholder="https://www.instagram.com/reel/..."
+            placeholder="https://www.instagram.com/reel/... or /p/..."
             value={url}
             onChangeText={(text) => {
               setUrl(text);
@@ -280,61 +367,14 @@ export default function ReelDownloaderScreen({ navigation, route }) {
 
         {/* Preview & Metadata */}
         {reelData && (
-          <View style={styles.previewContainer}>
-            <View style={styles.previewFrame}>
-              {reelData.videoUrl ? (
-                <Video
-                  key={reelData.videoUrl} // Force fresh player instance
-                  source={{ uri: reelData.videoUrl }}
-                  rate={1.0}
-                  volume={1.0}
-                  isMuted={false}
-                  resizeMode={ResizeMode.COVER}
-                  shouldPlay={isFocused && !downloading}
-                  isLooping
-                  style={styles.videoPlayer}
-                  useNativeControls={!downloading}
-                />
-              ) : (
-                <View style={styles.thumbnailPlaceholder}>
-                  <Play color={COLORS.text} size={40} />
-                </View>
-              )}
-            </View>
-
-
-            {downloading && (
-              <ProgressBar progress={downloadProgress} label="Downloading Reel" />
-            )}
-
-            <View style={styles.metaCard}>
-              <Text style={styles.metaTitle}>{reelData.title || 'Extracted Reel'}</Text>
-              
-              <TouchableOpacity 
-                style={[styles.downloadActionBtn, downloading && { opacity: 0.5, backgroundColor: COLORS.textSecondary }]}
-                onPress={handleDownload}
-                disabled={downloading}
-              >
-                {downloading ? (
-                  <ActivityIndicator color="#000" size="small" style={{ marginRight: 10 }} />
-                ) : (
-                  <Download color="#000" size={18} style={{ marginRight: 10 }} />
-                )}
-                <Text style={styles.downloadActionText}>
-                  {downloading ? `Downloading ${Math.round(downloadProgress * 100)}%` : 'Download Reel'}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={[styles.shareActionBtn, downloading && { opacity: 0.5 }]} 
-                onPress={handleShare}
-                disabled={downloading}
-              >
-                <Share2 color={COLORS.textSecondary} size={16} />
-                <Text style={styles.shareActionText}>SHARE LINK</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <PreviewCard 
+            reelData={reelData}
+            downloading={downloading}
+            downloadProgress={downloadProgress}
+            handleDownload={handleDownload}
+            handleShare={handleShare}
+            isFocused={isFocused}
+          />
         )}
 
       </ScrollView>
@@ -474,51 +514,68 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   metaCard: {
-    backgroundColor: COLORS.surface,
     padding: 24,
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: COLORS.glassBorder,
+    borderColor: 'rgba(255,255,255,0.08)',
     marginBottom: 24,
-    alignItems: 'center', // Center content horizontally
+  },
+  metaHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  metaIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(180, 185, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
   },
   metaTitle: {
     color: COLORS.text,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
-    textAlign: 'center',
-    lineHeight: 28,
-    marginBottom: 20,
+    letterSpacing: 0.5,
+  },
+  metaSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  actionGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   downloadActionBtn: {
     backgroundColor: COLORS.primary,
-    height: 60,
+    height: 56,
     borderRadius: 18,
-    width: '100%',
+    flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginRight: 12,
   },
   downloadActionText: {
     color: '#000',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 10,
+    fontSize: 14,
+    fontWeight: '900',
+    marginLeft: 8,
+    letterSpacing: 1,
   },
   shareActionBtn: {
-    flexDirection: 'row',
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 12,
-    width: '100%',
-  },
-  shareActionText: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: 'bold',
-    marginLeft: 8,
-    letterSpacing: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   creatorBadge: {
     flexDirection: 'row',

@@ -3,14 +3,14 @@ import React, { useEffect } from 'react';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LayoutGrid, Search, Heart, Play } from 'lucide-react-native';
 import HomeScreen from './screens/HomeScreen';
 import ReelDownloaderScreen from './screens/ReelDownloaderScreen';
 import StoryViewerScreen from './screens/StoryViewerScreen';
 import YouTubeDownloaderScreen from './screens/YouTubeDownloaderScreen';
-import ImageDownloaderScreen from './screens/ImageDownloaderScreen';
+import InAppPlayerScreen from './screens/InAppPlayerScreen';
 import { COLORS } from './constants/Theme';
 import api from './services/api';
 
@@ -32,14 +32,12 @@ export default function App() {
   useEffect(() => {
     const keepAlive = setInterval(async () => {
       try {
-        // Ping the root or a dedicated health endpoint
         await api.get('/'); 
         console.log('Keep-alive ping sent');
       } catch (e) {
-        // Even if it errors (e.g. 404), it wakes up the server
         console.log('Keep-alive ping completed');
       }
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 5 * 60 * 1000); 
 
     return () => clearInterval(keepAlive);
   }, []);
@@ -56,19 +54,42 @@ export default function App() {
           freezeOnBlur: true,
           lazy: true,
           tabBarStyle: {
-            backgroundColor: 'rgba(21, 21, 24, 0.95)',
+            backgroundColor: 'transparent',
             borderTopWidth: 0,
-            height: 85,
-            paddingBottom: 20,
-            paddingTop: 15,
+            height: 100,
             position: 'absolute',
-            borderTopLeftRadius: 30,
-            borderTopRightRadius: 30,
+            bottom: 0,
+            left: 0,
+            right: 0,
             elevation: 0,
+            paddingHorizontal: 10,
+            justifyContent: 'space-evenly'
           },
+          tabBarItemStyle: {
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingTop: 10,
+            flex: 1,
+          },
+          tabBarLabelStyle: {
+            fontSize: 10,
+            fontWeight: '800',
+            letterSpacing: 0.5,
+            marginTop: 2,
+            marginBottom: 28, // Pushes labels up to leave room for Shahid text
+          },
+          tabBarBackground: () => (
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(21, 21, 24, 0.98)', borderTopLeftRadius: 30, borderTopRightRadius: 30 }]}>
+              <View style={{ position: 'absolute', bottom: 15, left: 0, right: 0, alignItems: 'center' }}>
+                <Text style={{ color: 'rgba(255,255,255,0.15)', fontSize: 12, letterSpacing: 1, fontWeight: 'bold' }}>
+                  MADE BY SHAHID ANSARI
+                </Text>
+              </View>
+            </View>
+          ),
           tabBarActiveTintColor: COLORS.primary,
           tabBarInactiveTintColor: COLORS.textSecondary,
-          tabBarShowLabel: false,
+          tabBarShowLabel: true,
           tabBarIcon: ({ color, size, focused }) => {
             let Icon;
             if (route.name === 'Home') Icon = LayoutGrid;
@@ -77,7 +98,7 @@ export default function App() {
             else Icon = Heart;
 
             return (
-              <View style={{ alignItems: 'center' }}>
+              <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                 <Icon size={24} color={color} />
                 {focused && (
                   <View 
@@ -86,7 +107,9 @@ export default function App() {
                       height: 4, 
                       borderRadius: 2, 
                       backgroundColor: COLORS.primary, 
-                      marginTop: 6 
+                      position: 'absolute',
+                      top: -10,
+                      alignSelf: 'center',
                     }} 
                   />
                 )}
@@ -95,14 +118,18 @@ export default function App() {
           },
         })}
       >
-        <Tab.Screen name="Home" component={HomeScreen} />
-        <Tab.Screen name="Reels" component={ReelDownloaderScreen} />
-        <Tab.Screen name="YouTube" component={YouTubeDownloaderScreen} />
-        <Tab.Screen name="Stories" component={StoryViewerScreen} />
+        <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: 'Home' }} />
+        <Tab.Screen name="Reels" component={ReelDownloaderScreen} options={{ tabBarLabel: 'Reel/Posts' }} />
+        <Tab.Screen name="YouTube" component={YouTubeDownloaderScreen} options={{ tabBarLabel: 'YouTube' }} />
+        <Tab.Screen name="Stories" component={StoryViewerScreen} options={{ tabBarLabel: 'Stories' }} />
         <Tab.Screen 
-          name="ImageDownloader" 
-          component={ImageDownloaderScreen} 
-          options={{ tabBarButton: () => null }}
+          name="Player" 
+          component={InAppPlayerScreen} 
+          options={{ 
+            tabBarButton: () => null,
+            tabBarStyle: { display: 'none' },
+            tabBarItemStyle: { display: 'none', width: 0, height: 0 },
+          }}
         />
       </Tab.Navigator>
     </NavigationContainer>

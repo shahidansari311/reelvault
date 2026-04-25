@@ -10,8 +10,8 @@ export const ProgressBar = ({ progress, label }) => {
     const validProgress = isNaN(progress) || !isFinite(progress) ? 0 : Math.min(1, Math.max(0, progress));
     Animated.timing(animatedWidth, {
       toValue: validProgress,
-      duration: 600, // Slightly longer for smoother observation
-      easing: Easing.bezier(0.33, 1, 0.68, 1), // Premium ease-out
+      duration: 600, 
+      easing: Easing.bezier(0.33, 1, 0.68, 1), 
       useNativeDriver: false,
     }).start();
   }, [progress]);

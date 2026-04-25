@@ -4,14 +4,12 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import { Alert, Linking } from 'react-native';
 
-export const downloadFile = async (url, fileName, onProgress) => {
+export const downloadFile = async (url, fileName, onProgress, meta = null) => {
   try {
     // 1. Request/Check Permissions (Write-only avoids the AUDIO permission error)
     const { status } = await MediaLibrary.requestPermissionsAsync(true);
 
-    
     if (status !== 'granted') {
-
       Alert.alert(
         'Need Your Permission',
         'We need access to your storage to save files. Please allow it in Settings.',
@@ -53,6 +51,22 @@ export const downloadFile = async (url, fileName, onProgress) => {
     // Explicitly using the album name 'SaveX'
     await MediaLibrary.createAlbumAsync('SaveX', asset, false);
     
+    // 6. Save to History (SQLite)
+    if (meta) {
+      const { saveDownload } = require('../services/db');
+      await saveDownload({
+        id: Date.now().toString(),
+        title: meta.title || 'Unknown Title',
+        url: meta.url || url,
+        platform: meta.platform || 'unknown',
+        format: meta.format || null,
+        filesize_mb: result.headers && result.headers['Content-Length'] ? (parseInt(result.headers['Content-Length']) / 1024 / 1024).toFixed(2) : 0,
+        filepath: result.uri,
+        thumbnail: meta.thumbnail || null,
+        duration: meta.duration || 0,
+      });
+    }
+
     return true;
   } catch (error) {
     console.error('Download error:', error);

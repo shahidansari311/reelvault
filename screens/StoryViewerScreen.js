@@ -10,6 +10,7 @@ import {
   Modal,
   Image,
   FlatList,
+  Animated,
 } from 'react-native';
 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -34,41 +35,109 @@ import { ProgressBar } from '../components/ProgressBar';
 
 const { width, height } = Dimensions.get('window');
 
-const StoryItem = React.memo(({ item, onPress, disabled }) => (
-  <TouchableOpacity 
-    style={styles.storyPreviewCard}
-    onPress={() => onPress(item)}
-    disabled={disabled}
-  >
-    {item.type === 'video' ? (
-      <View style={styles.videoPreviewContainer}>
-        <Image 
-          source={{ uri: item.thumbnail || item.url }} 
-          style={styles.storyThumb} 
-          resizeMode="cover"
-        />
-        <View style={styles.playOverlay}>
-          <Play color={COLORS.primary} size={32} />
-        </View>
-      </View>
-    ) : (
-      <Image 
-        source={{ uri: item.url }} 
-        style={styles.storyThumb} 
-        resizeMode="cover"
-      />
+const StoryItem = React.memo(({ item, onPress, disabled, index }) => {
+  const scale = React.useRef(new Animated.Value(1)).current;
+  const opacity = React.useRef(new Animated.Value(0)).current;
+  const translateY = React.useRef(new Animated.Value(20)).current;
 
-    )}
-    <View style={styles.typeBadge}>
-      {item.type === 'video' ? (
-        <Play color="#FFF" size={10} style={{ marginRight: 4 }} />
-      ) : (
-        <Eye color="#FFF" size={10} style={{ marginRight: 4 }} />
-      )}
-      <Text style={styles.typeText}>{item.type.toUpperCase()}</Text>
-    </View>
-  </TouchableOpacity>
-));
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 400, delay: index * 50, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: 0, duration: 400, delay: index * 50, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  const handlePressIn = () => {
+    Animated.spring(scale, { toValue: 0.95, useNativeDriver: true }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true }).start();
+  };
+
+  return (
+    <Animated.View style={{ opacity, transform: [{ scale }, { translateY }] }}>
+      <TouchableOpacity 
+        style={styles.storyPreviewCard}
+        onPress={() => onPress(item)}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        disabled={disabled}
+        activeOpacity={1}
+      >
+        {item.type === 'video' ? (
+          <View style={styles.videoPreviewContainer}>
+            <Image 
+              source={{ uri: item.thumbnail || item.url }} 
+              style={styles.storyThumb} 
+              resizeMode="cover"
+            />
+            <View style={styles.playOverlay}>
+              <Play color={COLORS.primary} size={32} />
+            </View>
+          </View>
+        ) : (
+          <Image 
+            source={{ uri: item.url }} 
+            style={styles.storyThumb} 
+            resizeMode="cover"
+          />
+        )}
+        <View style={styles.typeBadge}>
+          {item.type === 'video' ? (
+            <Play color="#FFF" size={10} style={{ marginRight: 4 }} />
+          ) : (
+            <Eye color="#FFF" size={10} style={{ marginRight: 4 }} />
+          )}
+          <Text style={styles.typeText}>{item.type.toUpperCase()}</Text>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
+const SkeletonItem = ({ index }) => {
+  const opacity = React.useRef(new Animated.Value(0.3)).current;
+
+  React.useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.7, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true })
+      ])
+    );
+    const timeout = setTimeout(() => animation.start(), index * 100);
+    return () => {
+      clearTimeout(timeout);
+      animation.stop();
+    };
+  }, []);
+
+  return (
+    <Animated.View style={[styles.storyPreviewCard, { opacity, backgroundColor: 'rgba(255,255,255,0.08)' }]} />
+  );
+};
+
+const AnimatedErrorBubble = ({ error }) => {
+  const opacity = React.useRef(new Animated.Value(0)).current;
+  const translateY = React.useRef(new Animated.Value(-20)).current;
+
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: 0, friction: 6, useNativeDriver: true })
+    ]).start();
+  }, [error]);
+
+  return (
+    <Animated.View style={[styles.errorBubble, { opacity, transform: [{ translateY }] }]}>
+      <View style={styles.errorIconHeader}>
+        <Shield color="#FF6B6B" size={18} />
+        <Text style={styles.errorTitle}>{error.title}</Text>
+      </View>
+      <Text style={styles.errorBody}>{error.message}</Text>
+    </Animated.View>
+  );
+};
 
 export default function StoryViewerScreen({ navigation }) {
   const isFocused = useIsFocused();
@@ -82,10 +151,15 @@ export default function StoryViewerScreen({ navigation }) {
   const [searchType, setSearchType] = useState('profile'); // 'profile' or 'link'
   const [selectedStory, setSelectedStory] = useState(null);
 
+  const debounceTimeoutRef = React.useRef(null);
+  const fetchIdRef = React.useRef(0);
+  const fetchIntervalRef = React.useRef(null);
+
   React.useEffect(() => {
     if (!username) {
       setStories([]);
       setError(null);
+      if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
       return;
     }
     
@@ -94,18 +168,35 @@ export default function StoryViewerScreen({ navigation }) {
     // Don't auto-fetch if it looks like a complex link
     if (username.includes('instagram.com') || username.includes('http')) return;
 
-    const delayDebounceFn = setTimeout(() => {
+    if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
+
+    debounceTimeoutRef.current = setTimeout(() => {
       // Only auto-fetch if not already loading the same thing
       handleFetch();
     }, 1000); // 1.0s delay is more comfortable for typing
 
-    return () => clearTimeout(delayDebounceFn);
+    return () => {
+      if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
+    };
   }, [username]);
 
 
 
   const handleFetch = async () => {
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+
     if (!username) return;
+
+    const currentFetchId = ++fetchIdRef.current;
+
+    if (fetchIntervalRef.current) {
+      clearInterval(fetchIntervalRef.current);
+      fetchIntervalRef.current = null;
+    }
+
     setLoading(true);
     setFetchProgress(0);
     setError(null);
@@ -131,7 +222,7 @@ export default function StoryViewerScreen({ navigation }) {
     target = target.replace('@', '').split('?')[0];
 
     // Simulated progress
-    const interval = setInterval(() => {
+    fetchIntervalRef.current = setInterval(() => {
       setFetchProgress(prev => (prev < 0.9 ? prev + 0.1 : prev));
     }, 400);
 
@@ -154,15 +245,28 @@ export default function StoryViewerScreen({ navigation }) {
         }
       }
 
-      clearInterval(interval);
+      if (currentFetchId !== fetchIdRef.current) return;
+
+      if (fetchIntervalRef.current) {
+        clearInterval(fetchIntervalRef.current);
+        fetchIntervalRef.current = null;
+      }
+
       setFetchProgress(1);
       setTimeout(() => {
+        if (currentFetchId !== fetchIdRef.current) return;
         setStories(results);
         setLoading(false);
       }, 500);
 
     } catch (err) {
-      clearInterval(interval);
+      if (currentFetchId !== fetchIdRef.current) return;
+
+      if (fetchIntervalRef.current) {
+        clearInterval(fetchIntervalRef.current);
+        fetchIntervalRef.current = null;
+      }
+
       const serverData = err.response?.data;
       const status = err.response?.status;
 
@@ -197,7 +301,16 @@ export default function StoryViewerScreen({ navigation }) {
     setDownloading(true);
     setDownloadProgress(0);
     const fileName = `story_${Date.now()}.${item.type === 'video' ? 'mp4' : 'jpg'}`;
-    const success = await downloadFile(item.url, fileName, (p) => setDownloadProgress(p));
+    const success = await downloadFile(
+      item.url, 
+      fileName, 
+      (p) => setDownloadProgress(p),
+      {
+        title: item.title || `Instagram Story (${username})`,
+        platform: 'instagram',
+        format: item.type === 'video' ? 'MP4 Video' : 'JPG Image'
+      }
+    );
     setDownloading(false);
     setDownloadProgress(0);
     if (success) Alert.alert('Saved!', 'Media saved to your gallery.');
@@ -289,15 +402,7 @@ export default function StoryViewerScreen({ navigation }) {
         )}
 
         
-        {error && (
-          <View style={styles.errorBubble}>
-            <View style={styles.errorIconHeader}>
-              <Shield color="#FF6B6B" size={16} />
-              <Text style={styles.errorTitle}>{error.title}</Text>
-            </View>
-            <Text style={styles.errorBody}>{error.message}</Text>
-          </View>
-        )}
+        {error && <AnimatedErrorBubble error={error} />}
 
         <Text style={styles.privacyNote}>
           * Archive integrity is maintained. Private profiles remain restricted.
@@ -338,15 +443,17 @@ export default function StoryViewerScreen({ navigation }) {
       </View>
 
       <FlatList
-        data={stories}
-        keyExtractor={(item, index) => `${index}-${item.url}`}
+        data={loading ? [1,2,3,4,5,6] : stories}
+        keyExtractor={(item, index) => loading ? `skeleton-${index}` : `${index}-${item.url}`}
         numColumns={2}
         columnWrapperStyle={styles.columnWrapper}
         ListHeaderComponent={renderHeader}
         ListEmptyComponent={renderEmpty}
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
+          loading ? <SkeletonItem index={index} /> :
           <StoryItem 
             item={item} 
+            index={index}
             onPress={setSelectedStory} 
             disabled={downloading} 
           />
@@ -364,6 +471,21 @@ export default function StoryViewerScreen({ navigation }) {
         onRequestClose={() => !downloading && setSelectedStory(null)}
       >
         <View style={styles.modalBackdrop}>
+          <LinearGradient colors={['rgba(0,0,0,0.9)', 'transparent']} style={styles.modalTopNav}>
+            <TouchableOpacity 
+              style={[styles.modalCloseBtn, downloading && { opacity: 0.5 }]}
+              onPress={() => !downloading && setSelectedStory(null)}
+              disabled={downloading}
+            >
+              <ArrowLeft color="#FFF" size={26} />
+            </TouchableOpacity>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16, letterSpacing: 1 }}>STORY</Text>
+              <Text style={{ color: COLORS.primary, fontSize: 10, fontWeight: 'bold', letterSpacing: 2, marginTop: 2 }}>PREVIEW</Text>
+            </View>
+            <View style={{ width: 44 }} />
+          </LinearGradient>
+
           <View style={styles.playerContainer}>
             {selectedStory?.type === 'video' ? (
               <Video
@@ -386,38 +508,30 @@ export default function StoryViewerScreen({ navigation }) {
               />
             )}
 
+          </View>
 
+          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.95)']} style={styles.modalBottomControls}>
             {downloading && (
               <View style={styles.modalProgressContainer}>
                 <ProgressBar progress={downloadProgress} label="Saving to Vault" />
               </View>
             )}
 
-            <View style={styles.modalControls}>
-              <TouchableOpacity 
-                style={[styles.modalCloseBtn, downloading && { opacity: 0.5 }]}
-                onPress={() => !downloading && setSelectedStory(null)}
-                disabled={downloading}
-              >
-                <ArrowLeft color="#FFF" size={24} />
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={[styles.modalDownloadBtn, downloading && { opacity: 0.7, backgroundColor: COLORS.textSecondary }]}
-                onPress={() => handleDownload(selectedStory)}
-                disabled={downloading}
-              >
-                {downloading ? (
-                  <ActivityIndicator color="#000" size="small" style={{ marginRight: 10 }} />
-                ) : (
-                  <Download color="#000" size={24} style={{ marginRight: 10 }} />
-                )}
-                <Text style={styles.modalDownloadText}>
-                  {downloading ? `SAVING ${Math.round(downloadProgress * 100)}%` : 'SAVE TO VAULT'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+            <TouchableOpacity 
+              style={[styles.modalDownloadBtn, downloading && { opacity: 0.7, backgroundColor: COLORS.textSecondary }]}
+              onPress={() => handleDownload(selectedStory)}
+              disabled={downloading}
+            >
+              {downloading ? (
+                <ActivityIndicator color="#000" size="small" style={{ marginRight: 10 }} />
+              ) : (
+                <Download color="#000" size={24} style={{ marginRight: 10 }} />
+              )}
+              <Text style={styles.modalDownloadText}>
+                {downloading ? `SAVING ${Math.round(downloadProgress * 100)}%` : 'SAVE TO VAULT'}
+              </Text>
+            </TouchableOpacity>
+          </LinearGradient>
         </View>
       </Modal>
     </LinearGradient>
@@ -642,32 +756,45 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  modalControls: {
+  modalTopNav: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    zIndex: 100,
+  },
+  modalBottomControls: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    paddingBottom: 50,
+    paddingTop: 80,
+    paddingHorizontal: 20,
+    zIndex: 100,
+    flexDirection: 'column',
   },
   modalCloseBtn: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.15)',
   },
   modalDownloadBtn: {
-    flex: 1,
+    width: '100%',
     height: 60,
     backgroundColor: COLORS.primary,
-    borderRadius: 30,
-    marginLeft: 15,
+    borderRadius: 20,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
@@ -681,11 +808,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   modalProgressContainer: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    right: 20,
-    zIndex: 10,
+    marginBottom: 20,
     backgroundColor: 'rgba(0,0,0,0.5)',
     padding: 10,
     borderRadius: 15,

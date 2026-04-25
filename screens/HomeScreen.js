@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,7 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
-  Image,
+  Animated,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,29 +15,77 @@ import {
   ArrowRight,
   EyeOff,
   Globe,
-  Shield
+  Shield,
+  LayoutGrid,
+  Play
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 
 const { width } = Dimensions.get('window');
 
-export default function HomeScreen({ navigation }) {
-  const [clipboardUrl, setClipboardUrl] = React.useState('');
+const AnimatedCard = ({ children, onPress, fadeAnim }) => {
+  const scale = useRef(new Animated.Value(1)).current;
 
-  useFocusEffect(
-    React.useCallback(() => {
-      checkClipboard();
-    }, [])
-  );
-
-  const checkClipboard = async () => {
-    const text = await Clipboard.getStringAsync();
-    if (text.includes('instagram.com/')) {
-      setClipboardUrl(text);
-    } else {
-      setClipboardUrl('');
-    }
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start();
   };
+
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      friction: 4,
+      tension: 50,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <Animated.View 
+      style={[
+        styles.cardContainer, 
+        { 
+          opacity: fadeAnim, 
+          transform: [
+            { scale }, 
+            { translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }
+          ] 
+        }
+      ]}
+    >
+      <TouchableOpacity
+        activeOpacity={1}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onPress={onPress}
+        style={styles.mainActionBox}
+      >
+        {children}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
+export default function HomeScreen({ navigation }) {
+  const fadeAnims = [
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current,
+    useRef(new Animated.Value(0)).current, // for hero section
+  ];
+
+  useEffect(() => {
+    Animated.stagger(100, [
+      Animated.timing(fadeAnims[4], { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.timing(fadeAnims[0], { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.timing(fadeAnims[1], { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.timing(fadeAnims[2], { toValue: 1, duration: 500, useNativeDriver: true }),
+      Animated.timing(fadeAnims[3], { toValue: 1, duration: 500, useNativeDriver: true }),
+    ]).start();
+  }, []);
 
   return (
     <LinearGradient 
@@ -58,62 +106,71 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 200 }}>
         {/* Hero Section */}
-        <View style={styles.heroSection}>
+        <Animated.View style={[styles.heroSection, { opacity: fadeAnims[4], transform: [{ translateY: fadeAnims[4].interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
           <Text style={styles.heroTitle}>
-            Download your {'\n'}
-            <Text style={{ color: COLORS.primary }}>all videos using link.</Text>
+            Extract your {'\n'}
+            <Text style={{ color: COLORS.primary }}>media assets.</Text>
           </Text>
           <Text style={styles.heroSub}>
-            Save videos quickly by pasting a link. Built with &heart; by Shahid Ansari.
+            High-fidelity extraction for videos, images, and stories. Choose your target below.
           </Text>
-        </View>
+        </Animated.View>
 
-        {/* Action 01: Instagram */}
-        <TouchableOpacity 
-          style={styles.mainActionBox}
-          onPress={() => navigation.navigate('Reels')}
-        >
+        {/* Action 01: Instagram Reels & Posts */}
+        <AnimatedCard fadeAnim={fadeAnims[0]} onPress={() => navigation.navigate('Reels')}>
           <View style={styles.actionInfo}>
-            <Text style={styles.actionTitle}>Instagram Videos</Text>
-            <ArrowRight color={COLORS.text} size={24} />
-          </View>
-          <View style={styles.actionPreview}>
-            <LinearGradient
-              colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.8)']}
-              style={styles.previewOverlay}
-            />
-            <View style={styles.previewContent}>
-              <View style={styles.previewBtn}>
-                <Globe color={COLORS.text} size={14} />
-                <Text style={styles.previewBtnText}>Paste URL to proceed</Text>
-              </View>
+            <View>
+              <Text style={styles.actionTitle}>IG Reels & Posts</Text>
+              <Text style={styles.actionDesc}>Download videos & photos</Text>
+            </View>
+            <View style={styles.iconCircle}>
+              <Globe color="#000" size={20} />
             </View>
           </View>
-        </TouchableOpacity>
-
-        {/* Action 02: Stories */}
-        <TouchableOpacity 
-          style={styles.mainActionBox}
-          onPress={() => navigation.navigate('Stories')}
-        >
-          <View style={styles.actionInfo}>
-            <Text style={styles.actionTitle}>Instagram Stories</Text>
-            <ArrowRight color={COLORS.text} size={24} />
+          <View style={styles.previewBtn}>
+            <Text style={styles.previewBtnText}>Proceed to Extraction</Text>
+            <ArrowRight color={COLORS.text} size={16} />
           </View>
-          <View style={styles.actionRow}>
-            <View style={styles.quoteBox}>
-              <View style={styles.stealthIndicator}>
-                <EyeOff color={COLORS.textSecondary} size={14} />
-                <Text style={styles.stealthText}>STORY DOWNLOAD</Text>
-              </View>
-              <View style={styles.openBrowserBtn}>
-                <Text style={styles.openBrowserText}>Paste link or by User Name</Text>
-              </View>
+        </AnimatedCard>
+
+
+
+        {/* Action 03: Instagram Stories */}
+        <AnimatedCard fadeAnim={fadeAnims[2]} onPress={() => navigation.navigate('Stories')}>
+          <View style={styles.actionInfo}>
+            <View>
+              <Text style={styles.actionTitle}>IG Stories</Text>
+              <Text style={styles.actionDesc}>Anonymous viewing & saving</Text>
+            </View>
+            <View style={styles.iconCircle}>
+              <EyeOff color="#000" size={20} />
             </View>
           </View>
-        </TouchableOpacity>
+          <View style={styles.previewBtn}>
+            <Text style={styles.previewBtnText}>Proceed to Extraction</Text>
+            <ArrowRight color={COLORS.text} size={16} />
+          </View>
+        </AnimatedCard>
+
+        {/* Action 04: YouTube */}
+        <AnimatedCard fadeAnim={fadeAnims[3]} onPress={() => navigation.navigate('YouTube')}>
+          <View style={styles.actionInfo}>
+            <View>
+              <Text style={styles.actionTitle}>YouTube Media</Text>
+              <Text style={styles.actionDesc}>Video or Audio (MP3) extraction</Text>
+            </View>
+            <View style={styles.iconCircle}>
+              <Play color="#000" size={20} />
+            </View>
+          </View>
+          <View style={styles.previewBtn}>
+            <Text style={styles.previewBtnText}>Proceed to Extraction</Text>
+            <ArrowRight color={COLORS.text} size={16} />
+          </View>
+        </AnimatedCard>
+        
       </ScrollView>
     </LinearGradient>
   );
@@ -139,134 +196,73 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   heroSection: {
-    marginTop: 40,
-    marginBottom: 40,
+    marginTop: 30,
+    marginBottom: 35,
   },
   heroTitle: {
     color: COLORS.text,
-    fontSize: 42,
+    fontSize: 44,
     fontWeight: '900',
-    lineHeight: 48,
+    lineHeight: 52,
   },
   heroSub: {
     color: COLORS.textSecondary,
-    fontSize: 14,
+    fontSize: 15,
     marginTop: 12,
-    lineHeight: 22,
+    lineHeight: 24,
     opacity: 0.8,
   },
-  actionHeader: {
-    marginBottom: 12,
-    paddingLeft: 4,
-  },
-  actionLabel: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 2,
+  cardContainer: {
+    marginBottom: 20,
   },
   mainActionBox: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 32,
+    backgroundColor: 'rgba(20, 20, 25, 0.7)',
+    borderRadius: 28,
     padding: 24,
-    marginBottom: 24,
     borderWidth: 1,
-    borderColor: COLORS.glassBorder,
+    borderColor: 'rgba(255,255,255,0.08)',
     overflow: 'hidden',
     ...SHADOWS.glass,
   },
   actionInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 24,
   },
   actionTitle: {
     color: COLORS.text,
-    fontSize: 26,
-    fontWeight: '900',
-    letterSpacing: -0.5,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 6,
   },
-  actionPreview: {
-    height: 180,
+  actionDesc: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  iconCircle: {
+    width: 44,
+    height: 44,
     borderRadius: 22,
-    backgroundColor: '#000',
+    backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  previewOverlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  previewContent: {
-    alignItems: 'center',
+    ...SHADOWS.primary,
   },
   previewBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    paddingVertical: 12,
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    paddingVertical: 16,
     paddingHorizontal: 20,
-    borderRadius: 14,
+    borderRadius: 16,
   },
   previewBtnText: {
     color: COLORS.text,
-    fontSize: 13,
-    fontWeight: 'bold',
-    marginLeft: 10,
+    fontSize: 14,
+    fontWeight: '700',
     letterSpacing: 0.5,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  quoteBox: {
-    flex: 1,
-  },
-  quoteText: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontStyle: 'italic',
-    lineHeight: 18,
-    textAlign: 'center',
-  },
-  stealthIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-  },
-  stealthText: {
-    color: COLORS.textSecondary,
-    fontSize: 10,
-    fontWeight: 'bold',
-    marginLeft: 6,
-    letterSpacing: 1,
-  },
-  openBrowserBtn: {
-    backgroundColor: COLORS.primary,
-    height: 58,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 24,
-    width: '100%',
-    ...SHADOWS.primary,
-  },
-  openBrowserText: {
-    color: '#000',
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  footerText: {
-    color: 'rgba(255,255,255,0.15)',
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: 40,
-    letterSpacing: 6,
-    fontWeight: '600',
   },
 });
