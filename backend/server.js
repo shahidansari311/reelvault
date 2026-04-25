@@ -171,7 +171,9 @@ function looksLikeYouTubeBotCheck(stderr) {
     s.includes('verify that you') ||
     s.includes('rate limit') ||
     s.includes('429') ||
-    s.includes('too many requests')
+    s.includes('too many requests') ||
+    s.includes('only images are available') ||
+    s.includes('requested format is not available')
   );
 }
 
@@ -280,7 +282,7 @@ const getCommonArgs = () => {
     '--sleep-interval', '2', 
     '--max-sleep-interval', '5',
     '--retries', '5',
-    '--extractor-args', 'youtube:player_client=android,web;player_skip=configs,webpage'
+    '--extractor-args', 'youtube:player_client=ios,tv_embedded'
   ];
   
   // Set Node path for solving n-challenges
@@ -448,28 +450,12 @@ app.post('/youtube/info', async (req, res) => {
     const details = e.stderr || e.err?.message || '';
     console.error('Local YouTube info error:', details);
     
-    // 🏁 Strategy 2: Attempt Cobalt for Info Fallback
-    console.log('Attempting Cobalt Info fallback...');
-    try {
-      const cobaltUrl = await downloadWithCobalt(cleanUrl, '720');
-      
-      if (cobaltUrl) {
-        const videoId = extractYouTubeVideoId(cleanUrl);
-        return res.json({
-          title: 'YouTube Video',
-          thumbnail: videoId ? `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg` : '',
-          duration: 'Premium Quality',
-          videoId: videoId,
-          embedUrl: videoId ? `https://www.youtube.com/embed/${videoId}` : '',
-          videoOptions: [
-            { key: '1080', label: '1080p Premium', maxHeight: 1080 },
-            { key: '720', label: '720p Premium', maxHeight: 720 },
-            { key: 'audio', label: 'MP3 Audio', maxHeight: 0 }
-          ],
-        });
-      }
-    } catch (cobaltErr) {
-      console.error('Cobalt Info Fallback Failed:', cobaltErr.message);
+    // Immediate Error Handling as requested
+    if (details.includes('Only images are available') || details.includes('Requested format is not available')) {
+       return res.status(400).json({ 
+         error: 'Video Not Supported', 
+         message: 'This link cannot be processed because it either contains only images or the requested format is not available on YouTube.' 
+       });
     }
 
     if (looksLikeYouTubeBotCheck(details)) {
@@ -604,7 +590,7 @@ app.post('/youtube/download', async (req, res) => {
 
     if (dlKind === 'video') {
       // Hardened format selection for server stability
-      args.push('-f', `bestvideo[height<=${h}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${h}][ext=mp4]/bestvideo+bestaudio/best`);
+      args.push('-f', 'bestvideo+bestaudio/best');
       args.push('--merge-output-format', 'mp4');
     } else {
       args.push('-x', '--audio-format', 'mp3', '--audio-quality', '192K');
@@ -636,6 +622,14 @@ app.post('/youtube/download', async (req, res) => {
     const details = e.stderr || e.err?.message || 'Download Error';
     console.error('YouTube download error:', details);
     
+    // Immediate Error Handling as requested
+    if (details.includes('Only images are available') || details.includes('Requested format is not available')) {
+       return res.status(400).json({ 
+         error: 'Video Format Not Supported', 
+         message: 'This video cannot be downloaded because it either contains only images or the requested quality is not available on YouTube.' 
+       });
+    }
+
     // Final Strategy: Attempt Cobalt as absolute fallback even for lower qualities
     const fallbackUrl = await downloadWithCobalt(url.trim(), String(h));
     if (fallbackUrl) {
