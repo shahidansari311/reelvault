@@ -264,7 +264,7 @@ const getCommonArgs = () => {
     '--sleep-interval', '2', 
     '--max-sleep-interval', '5',
     '--retries', '5',
-    '--extractor-args', 'youtube:player_client=default,web,tv_embedded'
+    '--extractor-args', 'youtube:player_client=android,web;player_skip=configs,webpage'
   ];
   
   const cookies = getCookiesPath();
