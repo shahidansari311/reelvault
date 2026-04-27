@@ -287,7 +287,7 @@ const getCommonArgs = () => {
   
   // Set Node path for solving n-challenges
   if (process.env.NODE_PATH) {
-     args.push('--javascript-delay', '2');
+    args.push('--javascript-delay', '2');
   }
 
   const cookies = getCookiesPath();

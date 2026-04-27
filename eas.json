@@ -34,8 +34,16 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "https://reelvault-backend.onrender.com"
       }
+    },
+    "release_apk": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://reelvault-backend.onrender.com"
+      }
     }
-
   },
   "submit": {
     "production": {}
