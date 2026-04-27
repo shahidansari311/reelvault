@@ -789,11 +789,6 @@ app.get('/stories/:username', async (req, res) => {
   }
 
   // 🏁 Strategy 2: Fallback to yt-dlp
-  // 2. Check for Authentication
-  const authFlag = COOKIES_PATH 
-    ? `--cookies "${COOKIES_PATH}"` 
-    : `--cookies-from-browser chrome --cookies-from-browser edge --cookies-from-browser brave`;
-
   // 3. Use yt-dlp with "best" format to ensure combined audio/video
   const command = `yt-dlp -g ${authFlag} --no-playlist --no-warnings --no-check-certificates --geo-bypass --format "best[ext=mp4]/best" --add-header "Accept-Language: en-US,en;q=0.9" --add-header "Sec-Ch-Ua: \"Not A(Brand\";v=\"99\", \"Google Chrome\";v=\"121\", \"Chromium\";v=\"121\"" --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" --referer "https://www.instagram.com/" "${storyUrl}"`;
 
