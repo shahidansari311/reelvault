@@ -673,47 +673,29 @@ app.post('/download', async (req, res) => {
 
   // 🏁 Strategy 2: Fallback to local yt-dlp
   // 2. Check for Authentication (Priority: Manual File > Local Browser Auto-Auth)
-  const authFlag = COOKIES_PATH 
-    ? `--cookies "${COOKIES_PATH}"` 
-    : `--cookies-from-browser chrome --cookies-from-browser edge --cookies-from-browser brave`;
+  // 2. Build arguments and use spawn safely
+  const args = [
+    '-g',
+    '--no-playlist',
+    '--no-warnings',
+    '--no-check-certificates',
+    '--geo-bypass',
+    '--format', 'best[ext=mp4]/best',
+    '--add-header', 'Sec-Ch-Ua: "Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    '--referer', 'https://www.instagram.com/'
+  ];
 
-  // 3. Execute yt-dlp with "best" combined format to avoid split audio/video
-  const command = `yt-dlp -g ${authFlag} --no-playlist --no-warnings --no-check-certificates --geo-bypass --format "best[ext=mp4]/best" --add-header "Sec-Ch-Ua: \"Not A(Brand\";v=\"99\", \"Google Chrome\";v=\"121\", \"Chromium\";v=\"121\"" --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36" --referer "https://www.instagram.com/" "${cleanUrl}"`;
-  
-  // Added timeout (30s) to prevent hanging processes
-  exec(command, { timeout: 30000 }, (error, stdout, stderr) => {
-    if (error) {
-      console.error('Extraction Error Details:', stderr || error.message);
-      
-      let errorMsg = 'Something Went Wrong';
-      let subMsg = 'We couldn\'t get this video. The link might be broken or the post may no longer exist. Please check the link and try again.';
-      let statusCode = 500;
+  if (COOKIES_PATH) {
+    args.push('--cookies', COOKIES_PATH);
+  } else {
+    args.push('--cookies-from-browser', 'chrome', '--cookies-from-browser', 'edge', '--cookies-from-browser', 'brave');
+  }
 
-      if (stderr.includes('Login required') || stderr.includes('Private') || stderr.includes('private') || stderr.includes('login_required') || stderr.includes('login required')) {
-        errorMsg = 'This Account is Private';
-        subMsg = 'This Reel belongs to a private account. We can only download Reels from public accounts.';
-        statusCode = 403;
-      } else if (stderr.includes('404') || stderr.includes('Not Found') || stderr.includes('does not exist')) {
-        errorMsg = 'Reel Not Found';
-        subMsg = 'This Reel has been deleted or the link is wrong. Please double-check the link and try again.';
-        statusCode = 404;
-      } else if (error.killed) {
-        errorMsg = 'Taking Too Long';
-        subMsg = 'The request is taking too long. This can happen with large videos or when Instagram is slow. Please try again.';
-        statusCode = 504;
-      } else if (stderr.includes('Sign in') || stderr.includes('Rate limit') || stderr.includes('429') || stderr.includes('too many') || stderr.includes('login required')) {
-        errorMsg = 'Too Many Requests';
-        subMsg = 'Instagram is temporarily limiting our access. Please wait a minute or two and try again.';
-        statusCode = 429;
-      }
+  args.push(cleanUrl);
 
-      return res.status(statusCode).json({ 
-        error: errorMsg, 
-        message: subMsg,
-        details: process.env.NODE_ENV === 'development' ? stderr : undefined
-      });
-    }
-    
+  try {
+    const { stdout } = await runYtDlp(args, { timeoutMs: 30000 });
     const videoUrl = stdout.trim();
     if (!videoUrl) {
       return res.status(404).json({ 
@@ -721,9 +703,40 @@ app.post('/download', async (req, res) => {
         message: 'We couldn\'t find a downloadable video at this link. Instagram might be blocking us right now — please try again in a few minutes.' 
       });
     }
-
     res.json({ videoUrl });
-  });
+  } catch (error) {
+    const stderr = error.stderr || '';
+    const message = error.err?.message || '';
+    console.error('Extraction Error Details:', stderr || message);
+    
+    let errorMsg = 'Something Went Wrong';
+    let subMsg = 'We couldn\'t get this video. The link might be broken or the post may no longer exist. Please check the link and try again.';
+    let statusCode = 500;
+
+    if (stderr.includes('Login required') || stderr.includes('Private') || stderr.includes('private') || stderr.includes('login_required') || stderr.includes('login required')) {
+      errorMsg = 'This Account is Private';
+      subMsg = 'This Reel belongs to a private account. We can only download Reels from public accounts.';
+      statusCode = 403;
+    } else if (stderr.includes('404') || stderr.includes('Not Found') || stderr.includes('does not exist')) {
+      errorMsg = 'Reel Not Found';
+      subMsg = 'This Reel has been deleted or the link is wrong. Please double-check the link and try again.';
+      statusCode = 404;
+    } else if (error.err?.killed || message.includes('timeout')) {
+      errorMsg = 'Taking Too Long';
+      subMsg = 'The request is taking too long. This can happen with large videos or when Instagram is slow. Please try again.';
+      statusCode = 504;
+    } else if (stderr.includes('Sign in') || stderr.includes('Rate limit') || stderr.includes('429') || stderr.includes('too many') || stderr.includes('login required')) {
+      errorMsg = 'Too Many Requests';
+      subMsg = 'Instagram is temporarily limiting our access. Please wait a minute or two and try again.';
+      statusCode = 429;
+    }
+
+    return res.status(statusCode).json({ 
+      error: errorMsg, 
+      message: subMsg,
+      details: process.env.NODE_ENV === 'development' ? stderr : undefined
+    });
+  }
 });
 
 // 2. View Stories Endpoint (Robust yt-dlp extraction)
@@ -733,12 +746,6 @@ app.get('/stories/:username', async (req, res) => {
   
   console.log(`Starting Story extraction for user: ${target}`);
   
-  // 2. Check for Authentication
-  const authFlag = fs.existsSync(COOKIES_PATH) 
-    ? `--cookies "${COOKIES_PATH}"` 
-    : `--cookies-from-browser chrome --cookies-from-browser edge --cookies-from-browser brave`;
-
-  // 3. Use yt-dlp with "best" format to ensure combined audio/video
   const storyUrl = `https://www.instagram.com/stories/${target}/`;
 
   // 🏁 Strategy 1: Try Cobalt API for Stories
@@ -789,38 +796,29 @@ app.get('/stories/:username', async (req, res) => {
   }
 
   // 🏁 Strategy 2: Fallback to yt-dlp
-  // 3. Use yt-dlp with "best" format to ensure combined audio/video
-  const command = `yt-dlp -g ${authFlag} --no-playlist --no-warnings --no-check-certificates --geo-bypass --format "best[ext=mp4]/best" --add-header "Accept-Language: en-US,en;q=0.9" --add-header "Sec-Ch-Ua: \"Not A(Brand\";v=\"99\", \"Google Chrome\";v=\"121\", \"Chromium\";v=\"121\"" --user-agent "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" --referer "https://www.instagram.com/" "${storyUrl}"`;
+  const args = [
+    '-g',
+    '--no-playlist',
+    '--no-warnings',
+    '--no-check-certificates',
+    '--geo-bypass',
+    '--format', 'best[ext=mp4]/best',
+    '--add-header', 'Accept-Language: en-US,en;q=0.9',
+    '--add-header', 'Sec-Ch-Ua: "Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+    '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    '--referer', 'https://www.instagram.com/'
+  ];
 
-  exec(command, { timeout: 60000 }, (error, stdout, stderr) => {
-    if (error) {
-      console.warn('Story Extraction Issue:', stderr || error.message);
-      
-      let errorMsg = 'No Stories Right Now';
-      let subMsg = 'This user hasn\'t posted any stories in the last 24 hours. Stories only last 24 hours, so check back later!';
-      let statusCode = 404;
+  if (COOKIES_PATH && fs.existsSync(COOKIES_PATH)) {
+    args.push('--cookies', COOKIES_PATH);
+  } else {
+    args.push('--cookies-from-browser', 'chrome', '--cookies-from-browser', 'edge', '--cookies-from-browser', 'brave');
+  }
 
-      if (stderr.includes('Login required') || stderr.includes('login_required') || stderr.includes('Private') || stderr.includes('private') || stderr.includes('login required')) {
-        errorMsg = 'This Account is Private';
-        subMsg = 'This is a private account, so their stories are hidden. You can only view stories from public accounts.';
-        statusCode = 403;
-      } else if (stderr.includes('404') || stderr.includes('Not Found') || stderr.includes('does not exist') || stderr.includes('User not found')) {
-        errorMsg = 'User Does Not Exist';
-        subMsg = 'We couldn\'t find anyone with that username on Instagram. Please check the spelling and try again.';
-        statusCode = 404;
-      } else if (stderr.includes('Sign in') || stderr.includes('Rate limit') || stderr.includes('429') || stderr.includes('too many') || stderr.includes('login required')) {
-        errorMsg = 'Too Many Requests';
-        subMsg = 'Instagram is temporarily limiting our access. Please wait a minute or two and try again.';
-        statusCode = 429;
-      } else if (error.killed) {
-        errorMsg = 'Taking Too Long';
-        subMsg = 'The request is taking too long. Instagram might be slow right now. Please try again.';
-        statusCode = 504;
-      }
+  args.push(storyUrl);
 
-      return res.status(statusCode).json({ error: errorMsg, message: subMsg });
-    }
-
+  try {
+    const { stdout } = await runYtDlp(args, { timeoutMs: 60000 });
     const urls = stdout.trim().split(/\s+/).filter(url => url.startsWith('http'));
     
     if (urls.length > 0) {
@@ -836,7 +834,35 @@ app.get('/stories/:username', async (req, res) => {
         message: 'This user hasn\'t posted any stories in the last 24 hours. Stories only last 24 hours, so check back later!' 
       });
     }
-  });
+  } catch (error) {
+    const stderr = error.stderr || '';
+    const message = error.err?.message || '';
+    console.warn('Story Extraction Issue:', stderr || message);
+    
+    let errorMsg = 'No Stories Right Now';
+    let subMsg = 'This user hasn\'t posted any stories in the last 24 hours. Stories only last 24 hours, so check back later!';
+    let statusCode = 404;
+
+    if (stderr.includes('Login required') || stderr.includes('login_required') || stderr.includes('Private') || stderr.includes('private') || stderr.includes('login required')) {
+      errorMsg = 'This Account is Private';
+      subMsg = 'This is a private account, so their stories are hidden. You can only view stories from public accounts.';
+      statusCode = 403;
+    } else if (stderr.includes('404') || stderr.includes('Not Found') || stderr.includes('does not exist') || stderr.includes('User not found')) {
+      errorMsg = 'User Does Not Exist';
+      subMsg = 'We couldn\'t find anyone with that username on Instagram. Please check the spelling and try again.';
+      statusCode = 404;
+    } else if (stderr.includes('Sign in') || stderr.includes('Rate limit') || stderr.includes('429') || stderr.includes('too many') || stderr.includes('login required')) {
+      errorMsg = 'Too Many Requests';
+      subMsg = 'Instagram is temporarily limiting our access. Please wait a minute or two and try again.';
+      statusCode = 429;
+    } else if (error.err?.killed || message.includes('timeout')) {
+      errorMsg = 'Taking Too Long';
+      subMsg = 'The request is taking too long. Instagram might be slow right now. Please try again.';
+      statusCode = 504;
+    }
+
+    return res.status(statusCode).json({ error: errorMsg, message: subMsg });
+  }
 });
 
 // 3. Media Proxy (Crucial for bypassing Instagram IP-locking & Connection Reset)
