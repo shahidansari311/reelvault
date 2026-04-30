@@ -397,7 +397,6 @@ export default function StoryViewerScreen({ navigation }) {
   const renderEmpty = () => !loading && (
     <View style={styles.emptyContainer}>
       <TrendingUp color={COLORS.textSecondary} size={40} style={{ opacity: 0.3 }} />
-      <Text style={styles.emptyText}>History remains silent. Start your first extraction.</Text>
     </View>
   );
 
@@ -430,8 +429,12 @@ export default function StoryViewerScreen({ navigation }) {
         keyExtractor={(item, index) => loading ? `skeleton-${index}` : `${index}-${item.url}`}
         numColumns={2}
         columnWrapperStyle={styles.columnWrapper}
-        ListHeaderComponent={renderHeader()}
-        ListEmptyComponent={renderEmpty()}
+        ListHeaderComponent={
+          <View style={{ marginBottom: 'auto' }}>
+            {renderHeader()}
+            {renderEmpty()}
+          </View>
+        }
         renderItem={({ item, index }) => (
           loading ? <SkeletonItem index={index} /> :
           <StoryItem 
@@ -443,7 +446,7 @@ export default function StoryViewerScreen({ navigation }) {
         )}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: 150 }}
+        contentContainerStyle={{ paddingBottom: 150, flexGrow: 1 }}
       />
 
 
@@ -815,6 +818,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     padding: 10,
     borderRadius: 15,
+  },
+  storiesContainer: {
+    width: '100%',
+    flex: 1,
+    marginTop: 'auto',
+    marginBottom: 20,
   },
   columnWrapper: {
     justifyContent: 'space-between',

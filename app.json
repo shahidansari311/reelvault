@@ -32,12 +32,23 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "data": [{ "mimeType": "text/plain" }],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "data": [
+            {
+              "mimeType": "text/plain"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         },
         {
           "action": "SEND",
-          "data": [{ "mimeType": "text/plain" }]
+          "data": [
+            {
+              "mimeType": "text/plain"
+            }
+          ]
         }
       ]
     },
@@ -53,7 +64,16 @@
           "isAccessMediaLocationEnabled": true
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
