@@ -17,10 +17,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   ArrowLeft,
   Shield,
-  Linkedin,
-  Github,
+  Link,
+  Code,
   Globe,
-  Twitter,
+  AtSign,
   Mail,
   Phone,
   MapPin,
@@ -113,10 +113,10 @@ export default function AboutScreen({ navigation }) {
   }, []);
 
   const socialLinks = [
-    { icon: Linkedin, label: 'LinkedIn', sublabel: 'Shahid Ansari', url: 'https://www.linkedin.com/in/shahid-ansari-433449327/', color: '#0A66C2' },
-    { icon: Github, label: 'GitHub', sublabel: 'shahidansari311', url: 'https://github.com/shahidansari311', color: '#E6EDF3' },
-    { icon: Globe, label: 'Portfolio', sublabel: 'View My Work', url: 'https://your-portfolio-link.com', color: '#8B5CF6' },
-    { icon: Twitter, label: 'X (Twitter)', sublabel: '@Shahid_310_', url: 'https://x.com/Shahid_310_', color: '#1DA1F2' },
+    { icon: Link, label: 'LinkedIn', sublabel: 'Shahid Ansari', url: 'https://www.linkedin.com/in/shahid-ansari-433449327/', color: '#0A66C2' },
+    { icon: Code, label: 'GitHub', sublabel: 'shahidansari311', url: 'https://github.com/shahidansari311', color: '#E6EDF3' },
+    { icon: Globe, label: 'Portfolio', sublabel: 'View My Work', url: 'https://shahidansari.vercel.app/', color: '#8B5CF6' },
+    { icon: AtSign, label: 'X (Twitter)', sublabel: '@Shahid_310_', url: 'https://x.com/Shahid_310_', color: '#1DA1F2' },
   ];
 
   const handleSubmitFeedback = async () => {
@@ -212,8 +212,8 @@ export default function AboutScreen({ navigation }) {
           {/* Stats Row */}
           <View style={styles.statsRow}>
             <StatCard label="Stack" value="MERN" icon={Code2} />
-            <StatCard label="Projects" value="10+" icon={Star} />
-            <StatCard label="Focus" value="UI/UX" icon={Sparkles} />
+            <StatCard label="Projects" value="4+" icon={Star} />
+            <StatCard label="Focus" value="Web App" icon={Sparkles} />
           </View>
         </Animated.View>
 
@@ -225,7 +225,7 @@ export default function AboutScreen({ navigation }) {
           </View>
           <Text style={styles.bioText}>
             Full-Stack Developer and Computer Science student with experience building MERN and PERN stack applications. 
-            Skilled in creating scalable web apps, real-time systems, and modern UI/UX. Passionate about software engineering 
+            Skilled in creating scalable web apps, real-time systems, and modern web apps. Passionate about software engineering 
             and problem solving.
           </Text>
           <View style={styles.techChipsRow}>

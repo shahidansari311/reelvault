@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
@@ -96,8 +97,10 @@ function saveFeedbackData(data) {
   }
 }
 
+const nodemailer = require('nodemailer');
+
 // Submit Feedback
-app.post('/feedback', (req, res) => {
+app.post('/feedback', async (req, res) => {
   const { name, email, message, rating, timestamp } = req.body || {};
   if (!message || !message.trim()) {
     return res.status(400).json({ error: 'Missing feedback message.' });
@@ -117,6 +120,45 @@ app.post('/feedback', (req, res) => {
   saveFeedbackData(feedback.slice(0, 500)); // Keep latest 500
 
   console.log(`📝 New Feedback from ${entry.name}: "${entry.message.slice(0, 50)}..."`);
+
+  // Send Email Notification
+  if (process.env.GMAIL_USER && process.env.GMAIL_PASS) {
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.GMAIL_USER,
+          pass: process.env.GMAIL_PASS,
+        },
+      });
+
+      const mailOptions = {
+        from: `"SaveX Feedback" <${process.env.GMAIL_USER}>`,
+        to: process.env.GMAIL_USER, // Send to yourself
+        subject: `New Feedback from ${entry.name} - ${entry.rating}⭐`,
+        text: `New Feedback Received:\n\nName: ${entry.name}\nEmail: ${entry.email || 'N/A'}\nRating: ${entry.rating} Stars\nMessage:\n${entry.message}\n\nTime: ${new Date(entry.timestamp).toLocaleString()}`,
+        html: `
+          <h3>New SaveX Feedback</h3>
+          <p><strong>Name:</strong> ${entry.name}</p>
+          <p><strong>Email:</strong> ${entry.email || 'N/A'}</p>
+          <p><strong>Rating:</strong> ${entry.rating} / 5 ⭐</p>
+          <hr/>
+          <p><strong>Message:</strong></p>
+          <p style="white-space: pre-wrap; background: #f4f4f4; padding: 10px; border-radius: 5px;">${entry.message}</p>
+          <hr/>
+          <p><small>Time: ${new Date(entry.timestamp).toLocaleString()}</small></p>
+        `,
+      };
+
+      // Send email asynchronously without blocking the response
+      transporter.sendMail(mailOptions).catch(err => {
+        console.error('Failed to send feedback email:', err.message);
+      });
+    } catch (err) {
+      console.error('Error setting up nodemailer:', err.message);
+    }
+  }
+
   return res.json({ success: true, message: 'Feedback received!' });
 });
 
