@@ -5,7 +5,7 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.1.5:5000';
 
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 45000,
+  timeout: 120000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -163,7 +163,7 @@ export const requestYouTubeDownload = async ({ url, kind, maxHeight, audioBitrat
       audioBitrate,
       format,
       quality,
-    });
+    }, { timeout: 300000 }); // 5 min timeout for downloads
     return response.data;
   } catch (error) {
     console.error('Error requesting YouTube download:', error);

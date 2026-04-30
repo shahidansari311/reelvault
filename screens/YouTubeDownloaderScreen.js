@@ -9,11 +9,11 @@ import {
   Keyboard,
   ScrollView,
   Modal,
+  Image,
+  Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
-import { WebView } from 'react-native-webview';
-import { useIsFocused } from '@react-navigation/native';
 import {
   Link2 as LinkIcon,
   Shield,
@@ -27,7 +27,6 @@ import { downloadFile } from '../utils/download';
 import { fetchYouTubeInfo, requestYouTubeDownload } from '../services/api';
 
 export default function YouTubeDownloaderScreen({ navigation }) {
-  const isFocused = useIsFocused();
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [ytLoading, setYtLoading] = useState(false);
   const [ytDownloading, setYtDownloading] = useState(false);
@@ -169,7 +168,7 @@ export default function YouTubeDownloaderScreen({ navigation }) {
   };
 
   const videoOptions = Array.isArray(ytInfo?.videoOptions) ? ytInfo.videoOptions : [];
-  const embedUrl = ytInfo?.embedUrl || '';
+  const thumbnailUrl = ytInfo?.thumbnail || (ytInfo?.videoId ? `https://img.youtube.com/vi/${ytInfo.videoId}/maxresdefault.jpg` : '');
 
   return (
     <LinearGradient colors={['#0A0A0B', '#151518', '#050505']} style={styles.container}>
@@ -257,22 +256,27 @@ export default function YouTubeDownloaderScreen({ navigation }) {
           )}
         </View>
 
-        {ytInfo && embedUrl ? (
+        {ytInfo ? (
           <View style={styles.previewContainer}>
-            <View style={styles.webWrap}>
-              {isFocused ? (
-                <WebView
-                  source={{ uri: embedUrl }}
-                  style={styles.webView}
-                  allowsFullscreenVideo
-                  mediaPlaybackRequiresUserAction={false}
-                  javaScriptEnabled
-                  domStorageEnabled
-                />
-              ) : (
-                <View style={[styles.webView, styles.webPlaceholder]} />
-              )}
-            </View>
+            <TouchableOpacity
+              style={styles.webWrap}
+              activeOpacity={0.9}
+              onPress={() => {
+                if (youtubeUrl) Linking.openURL(youtubeUrl.trim());
+              }}
+            >
+              <Image
+                source={{ uri: thumbnailUrl }}
+                style={styles.webView}
+                resizeMode="cover"
+              />
+              <View style={styles.playOverlay}>
+                <View style={styles.playCircle}>
+                  <Download color="#FFF" size={28} />
+                </View>
+                <Text style={styles.playText}>Tap to open on YouTube</Text>
+              </View>
+            </TouchableOpacity>
 
             <View style={styles.metaCard}>
               <Text style={styles.metaTitle}>{ytInfo.title || 'YouTube Video'}</Text>
@@ -446,12 +450,31 @@ const styles = StyleSheet.create({
     ...SHADOWS.glass,
   },
   webView: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#000',
   },
-  webPlaceholder: {
+  playOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  playCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
+    marginBottom: 10,
+  },
+  playText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    fontWeight: '700',
   },
   metaCard: {
     backgroundColor: COLORS.surface,

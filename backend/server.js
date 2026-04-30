@@ -278,9 +278,7 @@ const getCommonArgs = () => {
     '--force-ipv4',
     '--no-check-certificates',
     '--geo-bypass',
-    '--sleep-interval', '2', 
-    '--max-sleep-interval', '5',
-    '--retries', '5',
+    '--retries', '3',
     '--no-check-certificates'
   ];
   
@@ -388,7 +386,7 @@ function runFfmpeg(args, { timeoutMs = 5 * 60 * 1000 } = {}) {
   });
 }
 
-// YouTube Info Endpoint
+// YouTube Info Endpoint — Direct yt-dlp (fastest path)
 app.post('/youtube/info', async (req, res) => {
   const { url } = req.body || {};
   if (!isValidYouTubeUrl(url)) return res.status(400).json({ error: 'Not a YouTube Link', message: 'That doesn\'t look like a YouTube link. Please paste a link from youtube.com or youtu.be.' });
@@ -396,37 +394,7 @@ app.post('/youtube/info', async (req, res) => {
   const cleanUrl = url.trim();
   const videoId = extractYouTubeVideoId(cleanUrl);
 
-  // 🏁 Strategy 1: Native Innertube API (Fastest, zero deps)
-  if (videoId) {
-    console.log('Attempting Native Innertube API info fetch...');
-    const innertubeData = await fetchNativeInnertube(videoId);
-    if (innertubeData && innertubeData.videoDetails) {
-      console.log('Native Innertube Info Success!');
-      const details = innertubeData.videoDetails;
-      
-      const heights = new Set([360, 720]);
-      if (innertubeData.streamingData && innertubeData.streamingData.adaptiveFormats) {
-        innertubeData.streamingData.adaptiveFormats.forEach(f => {
-          if (f.height) heights.add(f.height);
-        });
-      }
-      const videoOptions = Array.from(heights)
-        .sort((a, b) => b - a)
-        .map(h => ({ key: String(h), label: h >= 1080 ? `${h}p Premium` : `${h}p`, maxHeight: h }))
-        .concat([{ key: 'audio', label: 'MP3 Audio', maxHeight: 0 }]);
-
-      return res.json({
-        title: details.title || '',
-        thumbnail: details.thumbnail?.thumbnails?.[0]?.url || `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-        duration: secondsToDuration(details.lengthSeconds || 0),
-        videoId: videoId,
-        embedUrl: `https://www.youtube.com/embed/${videoId}`,
-        videoOptions: videoOptions,
-      });
-    }
-  }
-
-  // 🏁 Strategy 2: Local yt-dlp Fallback
+  // Direct yt-dlp extraction (Cobalt & Innertube are currently dead)
   try {
     console.log('Fetching YouTube info locally (yt-dlp)...');
     const { stdout } = await runYtDlp([
@@ -473,8 +441,7 @@ app.post('/youtube/info', async (req, res) => {
   }
 });
 
-// YouTube: Download to server + return file URL
-// YouTube Download Endpoint
+// YouTube Download Endpoint — Direct yt-dlp (Cobalt & Innertube removed, they're dead)
 app.post('/youtube/download', async (req, res) => {
   const { url, kind, maxHeight, quality, format } = req.body || {};
   if (!isValidYouTubeUrl(url)) return res.status(400).json({ error: 'Not a YouTube Link', message: 'That doesn\'t look like a YouTube link. Please paste a link from youtube.com or youtu.be.' });
@@ -483,106 +450,11 @@ app.post('/youtube/download', async (req, res) => {
   const targetExt = dlKind === 'video' ? 'mp4' : 'mp3';
   const h = Number(maxHeight || (String(quality).replace('p', '')) || 720);
 
-  // 🏁 Strategy 1: Try Cobalt first (multi-instance, most reliable)
-  console.log(`Trying Cobalt for ${dlKind} (${h}p)...`);
-  const cobaltMode = dlKind === 'audio' ? 'audio' : 'auto';
-  const cobaltUrl = await downloadWithCobalt(url.trim(), String(h), cobaltMode);
-  if (cobaltUrl) {
-    console.log('Cobalt success!');
-    return res.json({
-      downloadUrl: cobaltUrl,
-      title: 'YouTube Download (Premium)',
-      success: true,
-      source: 'cobalt'
-    });
-  }
-  console.log('Cobalt failed or rate-limited, falling back to next engines.');
-
-  const videoId = extractYouTubeVideoId(url.trim());
   const id = `${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
   const baseName = `savex_${id}`;
   const finalPath = path.join('/tmp', `${baseName}.${targetExt}`);
 
-  // 🏁 Strategy 2: Native Android Innertube + FFmpeg
-  console.log('Attempting Native Innertube direct download...');
-  const innertubeData = await fetchNativeInnertube(videoId);
-  if (innertubeData && innertubeData.streamingData) {
-    try {
-      const streaming = innertubeData.streamingData;
-      let videoUrl = null;
-      let audioUrl = null;
-
-      const audioStreams = (streaming.adaptiveFormats || []).filter(f => f.mimeType?.includes('audio') && f.url);
-      if (audioStreams.length > 0) {
-        audioStreams.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-        audioUrl = audioStreams[0].url;
-      } else {
-        const formats = (streaming.formats || []).filter(f => f.url);
-        if (formats.length > 0) audioUrl = formats[0].url;
-      }
-
-      if (dlKind === 'audio' && audioUrl) {
-         await runFfmpeg([
-            '-i', audioUrl,
-            '-vn',
-            '-ab', '192k',
-            '-ar', '44100',
-            finalPath
-         ]);
-      } else if (dlKind === 'video') {
-         const videoStreams = (streaming.adaptiveFormats || []).filter(f => f.mimeType?.includes('video') && f.url && f.height <= h);
-         if (videoStreams.length > 0) {
-            videoStreams.sort((a, b) => (b.height || 0) - (a.height || 0));
-            videoUrl = videoStreams[0].url;
-         } else {
-            const formats = (streaming.formats || []).filter(f => f.url && f.height <= h);
-            if (formats.length > 0) {
-               formats.sort((a, b) => (b.height || 0) - (a.height || 0));
-               videoUrl = formats[0].url;
-            } else if (audioUrl) {
-               // Fallback: Just grab any format with a valid URL if nothing matches criteria
-               const anyVids = (streaming.formats || []).filter(f => f.url);
-               if (anyVids.length > 0) videoUrl = anyVids[0].url;
-            }
-         }
-
-         if (videoUrl && audioUrl && videoUrl !== audioUrl) {
-             console.log('Muxing Innertube separate streams via FFmpeg...');
-             await runFfmpeg([
-                 '-i', videoUrl,
-                 '-i', audioUrl,
-                 '-c:v', 'copy',
-                 '-c:a', 'aac',
-                 finalPath
-             ]);
-         } else if (videoUrl) {
-             console.log('Saving Innertube pre-muxed stream via FFmpeg...');
-             await runFfmpeg([
-                 '-i', videoUrl,
-                 '-c:v', 'copy',
-                 '-c:a', 'copy',
-                 finalPath
-             ]);
-         }
-      }
-
-      if (fs.existsSync(finalPath)) {
-         const publicPath = path.join(YT_DOWNLOADS_DIR, `${baseName}.${targetExt}`);
-         fs.renameSync(finalPath, publicPath);
-         console.log('Innertube + FFmpeg download success!');
-         return res.json({
-            downloadUrl: makePublicDownloadUrl(req, `${baseName}.${targetExt}`),
-            title: 'YouTube Download',
-            success: true,
-            source: 'innertube'
-         });
-      }
-    } catch (e) {
-      console.error('Native Innertube Download Failed:', e.message);
-    }
-  }
-
-  // 🏁 Strategy 3: Local yt-dlp
+  // Direct yt-dlp download (no Cobalt/Innertube overhead)
   const outputTemplate = path.join('/tmp', `${baseName}.%(ext)s`);
 
   try {
@@ -630,18 +502,7 @@ app.post('/youtube/download', async (req, res) => {
        });
     }
 
-    // Final Strategy: Attempt Cobalt as absolute fallback even for lower qualities
-    const fallbackUrl = await downloadWithCobalt(url.trim(), String(h));
-    if (fallbackUrl) {
-      return res.json({
-        downloadUrl: fallbackUrl,
-        title: 'YouTube Download (Fallback)',
-        success: true,
-        source: 'cobalt'
-      });
-    }
-
-    return res.status(500).json({ error: 'Download Did Not Work', message: 'We tried everything but couldn\'t download this video. YouTube may be blocking it. Please try again later or try a different video.' });
+    return res.status(500).json({ error: 'Download Did Not Work', message: 'We couldn\'t download this video. YouTube may be blocking it. Please try again later or try a different video.' });
   }
 });
 
@@ -658,21 +519,7 @@ app.post('/download/reel', async (req, res) => {
   const cleanUrl = reelUrl.trim();
   console.log('Starting REEL (video) extraction for:', cleanUrl);
 
-  // 🏁 Strategy 1: Try Cobalt API
-  console.log('Attempting Cobalt for Instagram Reel...');
-  try {
-    const cobaltUrl = await downloadWithCobalt(cleanUrl);
-    if (cobaltUrl) {
-      console.log('Cobalt success for Instagram Reel!');
-      return res.json({ videoUrl: cobaltUrl, type: 'video' });
-    }
-  } catch (e) {
-    console.warn('Cobalt Instagram reel attempt failed:', e.message);
-  }
-
-  console.log('Cobalt failed, falling back to yt-dlp for reel video.');
-
-  // 🏁 Strategy 2: yt-dlp — force VIDEO format only (no image fallback)
+  // Direct yt-dlp extraction (Cobalt instances are currently dead)
   const args = [
     '-g',
     '--no-playlist',
@@ -753,50 +600,7 @@ app.post('/download/post', async (req, res) => {
   const cleanUrl = reelUrl.trim();
   console.log('Starting POST (image) extraction for:', cleanUrl);
 
-  // 🏁 Strategy 1: Try Cobalt API
-  console.log('Attempting Cobalt for Instagram Post...');
-  try {
-    for (const instance of COBALT_INSTANCES) {
-      try {
-        const response = await axios.post(`${instance}/`, {
-          url: cleanUrl,
-          filenameStyle: 'pretty',
-        }, {
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'User-Agent': 'SaveX-Client/1.3',
-          },
-          timeout: 15000,
-        });
-
-        const data = response.data;
-
-        // Cobalt picker mode = carousel post with multiple images
-        if (data.status === 'picker' && Array.isArray(data.picker)) {
-          const images = data.picker.map(item => item.url).filter(Boolean);
-          if (images.length > 0) {
-            console.log(`Cobalt success for Post! Found ${images.length} images.`);
-            return res.json({ images, type: 'image' });
-          }
-        }
-        // Single image/redirect
-        if ((data.status === 'redirect' || data.status === 'tunnel') && data.url) {
-          console.log('Cobalt success for single Post image!');
-          return res.json({ images: [data.url], type: 'image' });
-        }
-      } catch (err) {
-        console.warn(`Cobalt post instance ${instance} failed:`, err.message);
-        continue;
-      }
-    }
-  } catch (e) {
-    console.warn('Cobalt post extraction failed completely.');
-  }
-
-  console.log('Cobalt failed, falling back to yt-dlp for post image.');
-
-  // 🏁 Strategy 2: yt-dlp --dump-json to extract image URLs
+  // Direct yt-dlp extraction (Cobalt instances are currently dead)
   const args = [
     '--dump-json',
     '--no-playlist',
@@ -896,54 +700,7 @@ app.get('/stories/:username', async (req, res) => {
   
   const storyUrl = `https://www.instagram.com/stories/${target}/`;
 
-  // 🏁 Strategy 1: Try Cobalt API for Stories
-  console.log(`Attempting Cobalt for stories of ${target}...`);
-  try {
-    for (const instance of COBALT_INSTANCES) {
-      try {
-        const response = await axios.post(`${instance}/`, {
-          url: storyUrl,
-          filenameStyle: 'pretty',
-        }, {
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'User-Agent': 'SaveX-Client/1.3',
-          },
-          timeout: 20000,
-        });
-
-        const data = response.data;
-        let storyItems = [];
-
-        if (data.status === 'picker' && Array.isArray(data.picker)) {
-          storyItems = data.picker.map(item => ({
-            type: item.url.includes('.mp4') || item.type === 'video' ? 'video' : 'image',
-            url: item.url,
-            thumbnail: item.url
-          }));
-        } else if (data.status === 'redirect' || data.status === 'tunnel') {
-          storyItems = [{
-            type: data.url.includes('.mp4') ? 'video' : 'image',
-            url: data.url,
-            thumbnail: data.url
-          }];
-        }
-
-        if (storyItems.length > 0) {
-          console.log(`Cobalt success for stories of ${target}! Found ${storyItems.length} items.`);
-          return res.json(storyItems);
-        }
-      } catch (err) {
-        console.warn(`Cobalt story instance ${instance} failed:`, err.message);
-        continue;
-      }
-    }
-  } catch (e) {
-    console.warn('Cobalt story extraction failed completely, falling back to yt-dlp.');
-  }
-
-  // 🏁 Strategy 2: Fallback to yt-dlp
+  // Direct yt-dlp extraction (Cobalt instances are currently dead)
   const args = [
     '-g',
     '--no-playlist',
