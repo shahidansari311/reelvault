@@ -10,6 +10,7 @@ import HomeScreen from './screens/HomeScreen';
 import ReelDownloaderScreen from './screens/ReelDownloaderScreen';
 import StoryViewerScreen from './screens/StoryViewerScreen';
 import YouTubeDownloaderScreen from './screens/YouTubeDownloaderScreen';
+import AboutScreen from './screens/AboutScreen';
 import InAppPlayerScreen from './screens/InAppPlayerScreen';
 import { COLORS } from './constants/Theme';
 import api from './services/api';
@@ -128,6 +129,14 @@ export default function App() {
           options={{ 
             tabBarButton: () => null,
             tabBarStyle: { display: 'none' },
+            tabBarItemStyle: { display: 'none', width: 0, height: 0 },
+          }}
+        />
+        <Tab.Screen 
+          name="About" 
+          component={AboutScreen} 
+          options={{ 
+            tabBarButton: () => null,
             tabBarItemStyle: { display: 'none', width: 0, height: 0 },
           }}
         />

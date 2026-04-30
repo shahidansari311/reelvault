@@ -78,6 +78,54 @@ app.get('/', (req, res) => {
 // Simple Ping for keep-alive services (e.g., cron-job.org)
 app.get('/ping', (req, res) => res.status(200).send('pong'));
 
+// Feedback storage
+const FEEDBACK_FILE = path.join(__dirname, 'feedback.json');
+function loadFeedback() {
+  try {
+    if (fs.existsSync(FEEDBACK_FILE)) {
+      return JSON.parse(fs.readFileSync(FEEDBACK_FILE, 'utf8'));
+    }
+  } catch (e) { /* ignore */ }
+  return [];
+}
+function saveFeedbackData(data) {
+  try {
+    fs.writeFileSync(FEEDBACK_FILE, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error('Failed to save feedback:', e.message);
+  }
+}
+
+// Submit Feedback
+app.post('/feedback', (req, res) => {
+  const { name, email, message, rating, timestamp } = req.body || {};
+  if (!message || !message.trim()) {
+    return res.status(400).json({ error: 'Missing feedback message.' });
+  }
+
+  const entry = {
+    id: Date.now().toString(),
+    name: (name || 'Anonymous').trim().slice(0, 100),
+    email: (email || '').trim().slice(0, 200),
+    message: message.trim().slice(0, 2000),
+    rating: Math.min(5, Math.max(0, Number(rating) || 0)),
+    timestamp: timestamp || new Date().toISOString(),
+  };
+
+  const feedback = loadFeedback();
+  feedback.unshift(entry);
+  saveFeedbackData(feedback.slice(0, 500)); // Keep latest 500
+
+  console.log(`📝 New Feedback from ${entry.name}: "${entry.message.slice(0, 50)}..."`);
+  return res.json({ success: true, message: 'Feedback received!' });
+});
+
+// Get Feedback (for developer)
+app.get('/feedback', (req, res) => {
+  const feedback = loadFeedback();
+  return res.json({ feedback, total: feedback.length });
+});
+
 console.log('🔍 System Check: Cookie Source ->', COOKIES_PATH);
 console.log('📁 Cookie File Exists?', fs.existsSync(COOKIES_PATH) ? 'YES' : 'NO');
 console.log('🔍 YouTube Cookie Source ->', YT_COOKIES_PATH);

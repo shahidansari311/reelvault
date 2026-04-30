@@ -17,7 +17,9 @@ import {
   Globe,
   Shield,
   LayoutGrid,
-  Play
+  Play,
+  Code2,
+  Heart,
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 
@@ -168,6 +170,21 @@ export default function HomeScreen({ navigation }) {
             <ArrowRight color={COLORS.text} size={16} />
           </View>
         </AnimatedCard>
+
+        {/* About the Developer */}
+        <Animated.View style={{ opacity: fadeAnims[4], transform: [{ translateY: fadeAnims[4].interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }}>
+          <TouchableOpacity
+            style={styles.aboutBtn}
+            onPress={() => navigation.navigate('About')}
+            activeOpacity={0.8}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Code2 color={COLORS.primary} size={18} style={{ marginRight: 10 }} />
+              <Text style={styles.aboutBtnText}>About the Developer</Text>
+            </View>
+            <ArrowRight color="rgba(255,255,255,0.3)" size={16} />
+          </TouchableOpacity>
+        </Animated.View>
         
       </ScrollView>
     </LinearGradient>
@@ -259,6 +276,24 @@ const styles = StyleSheet.create({
   },
   previewBtnText: {
     color: COLORS.text,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  aboutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 20,
+    paddingVertical: 18,
+    paddingHorizontal: 22,
+    marginTop: 30,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  aboutBtnText: {
+    color: 'rgba(255,255,255,0.6)',
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: 0.5,

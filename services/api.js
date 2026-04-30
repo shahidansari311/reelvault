@@ -180,6 +180,16 @@ export const requestYouTubeDownload = async ({ url, kind, maxHeight, audioBitrat
   }
 };
 
+// Submit Feedback
+export const submitFeedback = async (feedbackData) => {
+  try {
+    const response = await api.post('/feedback', feedbackData);
+    return response.data;
+  } catch (error) {
+    console.error('Error submitting feedback:', error);
+    throw error;
+  }
+};
+
 
 export default api;
-
