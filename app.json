@@ -28,7 +28,18 @@
         "android.permission.READ_MEDIA_VIDEO"
       ],
       "package": "com.shahid310.reelvault",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [{ "mimeType": "text/plain" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        },
+        {
+          "action": "SEND",
+          "data": [{ "mimeType": "text/plain" }]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -48,8 +48,12 @@ export const downloadFile = async (url, fileName, onProgress, meta = null) => {
 
     // 5. Save to Media Library (Gallery)
     const asset = await MediaLibrary.createAssetAsync(result.uri);
-    // Explicitly using the album name 'SaveX'
-    await MediaLibrary.createAlbumAsync('SaveX', asset, false);
+    try {
+      // Explicitly using the album name 'SaveX'
+      await MediaLibrary.createAlbumAsync('SaveX', asset, false);
+    } catch (albumErr) {
+      console.warn('Could not move to SaveX album (likely Android 13 permission restriction), but file is saved to default gallery.');
+    }
     
     // 6. Save to History (SQLite)
     if (meta) {

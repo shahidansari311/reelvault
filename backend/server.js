@@ -531,47 +531,45 @@ app.post('/youtube/info', async (req, res) => {
   }
 });
 
+const ytdl = require('@distube/ytdl-core');
+
 // Proxy Streaming Endpoint — Avoids IP restrictions by streaming directly through our server!
 app.get('/youtube/stream', async (req, res) => {
   const { url, kind, h } = req.query || {};
   if (!url) return res.status(400).send('No URL provided');
 
   try {
-    let args = ['-g', '--no-playlist', ...getCommonArgs()];
-    if (kind === 'video') {
-      args.push('-f', `best[height<=${h || 720}][ext=mp4]/best[ext=mp4]/best`);
+    const isValid = ytdl.validateURL(url);
+    if (!isValid) return res.status(400).send('Invalid YouTube URL');
+
+    const info = await ytdl.getInfo(url);
+    let format;
+
+    if (kind === 'audio') {
+      format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio' });
+      res.setHeader('Content-Type', 'audio/mp4');
+      res.setHeader('Content-Disposition', `attachment; filename="youtube_audio_${Date.now()}.m4a"`);
     } else {
-      args.push('-f', 'bestaudio[ext=m4a]/bestaudio/best');
-    }
-    args.push(url.trim());
-
-    // 1. Get the direct URL from YouTube
-    const { stdout } = await runYtDlp(args, { timeoutMs: 30000 });
-    const directUrl = stdout.trim().split('\n')[0];
-
-    if (!directUrl || !directUrl.startsWith('http')) {
-      return res.status(500).send('Could not extract a stream URL.');
-    }
-
-    // 2. Stream the file directly from YouTube to the client
-    const response = await axios({
-      method: 'get',
-      url: directUrl,
-      responseType: 'stream',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      const height = parseInt(h) || 720;
+      format = ytdl.chooseFormat(info.formats, { quality: 'highest', filter: (f) => f.container === 'mp4' && f.hasAudio && f.hasVideo && f.height <= height });
+      if (!format) {
+        format = ytdl.chooseFormat(info.formats, { quality: 'highest', filter: (f) => f.container === 'mp4' && f.hasAudio && f.hasVideo });
       }
-    });
-
-    res.setHeader('Content-Type', response.headers['content-type'] || (kind === 'audio' ? 'audio/mp4' : 'video/mp4'));
-    if (response.headers['content-length']) {
-      res.setHeader('Content-Length', response.headers['content-length']);
+      if (!format) {
+        format = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'audioandvideo' });
+      }
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Content-Disposition', `attachment; filename="youtube_video_${Date.now()}.mp4"`);
     }
-    res.setHeader('Content-Disposition', `attachment; filename="youtube_${Date.now()}.${kind === 'audio' ? 'm4a' : 'mp4'}"`);
 
-    response.data.pipe(res);
+    if (format && format.contentLength) {
+      res.setHeader('Content-Length', format.contentLength);
+    }
+
+    ytdl(url, { format }).pipe(res);
+
   } catch (err) {
-    console.error('Streaming error:', err.message);
+    console.error('ytdl-core streaming error:', err.message);
     if (!res.headersSent) {
       res.status(500).send('Streaming failed.');
     }
