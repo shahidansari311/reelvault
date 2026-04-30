@@ -531,7 +531,54 @@ app.post('/youtube/info', async (req, res) => {
   }
 });
 
-// YouTube Download Endpoint — Extract direct URL, no server-side download needed
+// Proxy Streaming Endpoint — Avoids IP restrictions by streaming directly through our server!
+app.get('/youtube/stream', async (req, res) => {
+  const { url, kind, h } = req.query || {};
+  if (!url) return res.status(400).send('No URL provided');
+
+  try {
+    let args = ['-g', '--no-playlist', ...getCommonArgs()];
+    if (kind === 'video') {
+      args.push('-f', `best[height<=${h || 720}][ext=mp4]/best[ext=mp4]/best`);
+    } else {
+      args.push('-f', 'bestaudio[ext=m4a]/bestaudio/best');
+    }
+    args.push(url.trim());
+
+    // 1. Get the direct URL from YouTube
+    const { stdout } = await runYtDlp(args, { timeoutMs: 30000 });
+    const directUrl = stdout.trim().split('\n')[0];
+
+    if (!directUrl || !directUrl.startsWith('http')) {
+      return res.status(500).send('Could not extract a stream URL.');
+    }
+
+    // 2. Stream the file directly from YouTube to the client
+    const response = await axios({
+      method: 'get',
+      url: directUrl,
+      responseType: 'stream',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+
+    res.setHeader('Content-Type', response.headers['content-type'] || (kind === 'audio' ? 'audio/mp4' : 'video/mp4'));
+    if (response.headers['content-length']) {
+      res.setHeader('Content-Length', response.headers['content-length']);
+    }
+    res.setHeader('Content-Disposition', `attachment; filename="youtube_${Date.now()}.${kind === 'audio' ? 'm4a' : 'mp4'}"`);
+
+    response.data.pipe(res);
+  } catch (err) {
+    console.error('Streaming error:', err.message);
+    if (!res.headersSent) {
+      res.status(500).send('Streaming failed.');
+    }
+  }
+});
+
+// YouTube Download Endpoint — Returns the proxy URL to the client
 app.post('/youtube/download', async (req, res) => {
   const { url, kind, maxHeight, quality, format } = req.body || {};
   if (!isValidYouTubeUrl(url)) return res.status(400).json({ error: 'Not a YouTube Link', message: 'That doesn\'t look like a YouTube link. Please paste a link from youtube.com or youtu.be.' });
@@ -539,47 +586,17 @@ app.post('/youtube/download', async (req, res) => {
   const dlKind = kind || (format === 'mp3' ? 'audio' : 'video');
   const h = Number(maxHeight || (String(quality).replace('p', '')) || 720);
 
-  try {
-    let args = ['-g', '--no-playlist', ...getCommonArgs()];
+  // Construct our own proxy URL
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.headers.host;
+  const proxyUrl = `${protocol}://${host}/youtube/stream?url=${encodeURIComponent(url.trim())}&kind=${dlKind}&h=${h}`;
 
-    if (dlKind === 'video') {
-      // Get the best pre-muxed mp4 stream URL (no ffmpeg needed)
-      args.push('-f', `best[height<=${h}][ext=mp4]/best[ext=mp4]/best`);
-    } else {
-      // Get the best audio stream URL
-      args.push('-f', 'bestaudio[ext=m4a]/bestaudio/best');
-    }
-
-    args.push(url.trim());
-
-    console.log(`Extracting direct ${dlKind} URL...`);
-    const { stdout } = await runYtDlp(args, { timeoutMs: 60000 });
-    const directUrl = stdout.trim().split('\n')[0];
-
-    if (!directUrl || !directUrl.startsWith('http')) {
-      throw new Error('Could not extract a download URL.');
-    }
-
-    console.log('Direct URL extracted successfully!');
-    return res.json({
-      downloadUrl: directUrl,
-      title: 'YouTube Download',
-      success: true,
-      source: 'direct'
-    });
-  } catch (e) {
-    const details = e.stderr || e.err?.message || 'Download Error';
-    console.error('YouTube download error:', details);
-    
-    if (details.includes('Only images are available') || details.includes('Requested format is not available')) {
-       return res.status(400).json({ 
-         error: 'Video Format Not Supported', 
-         message: 'This video cannot be downloaded because the requested quality is not available.' 
-       });
-    }
-
-    return res.status(500).json({ error: 'Download Did Not Work', message: 'We couldn\'t get the download link for this video. Please try again later.' });
-  }
+  return res.json({
+    downloadUrl: proxyUrl,
+    title: 'YouTube Download',
+    success: true,
+    source: 'proxy'
+  });
 });
 
 // ============================================================

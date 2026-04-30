@@ -430,8 +430,8 @@ export default function StoryViewerScreen({ navigation }) {
         keyExtractor={(item, index) => loading ? `skeleton-${index}` : `${index}-${item.url}`}
         numColumns={2}
         columnWrapperStyle={styles.columnWrapper}
-        ListHeaderComponent={renderHeader}
-        ListEmptyComponent={renderEmpty}
+        ListHeaderComponent={renderHeader()}
+        ListEmptyComponent={renderEmpty()}
         renderItem={({ item, index }) => (
           loading ? <SkeletonItem index={index} /> :
           <StoryItem 
