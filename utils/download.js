@@ -25,21 +25,41 @@ export const downloadFile = async (url, fileName, onProgress, meta = null) => {
     const fileUri = `${FileSystem.documentDirectory}${fileName}`;
     
     // 3. Create Download Resumable for progress tracking
+    let fakeProgressInterval = null;
+    let currentFakeProgress = 0;
+
     const downloadResumable = FileSystem.createDownloadResumable(
       url,
       fileUri,
       {},
       (downloadProgress) => {
         const denom = downloadProgress.totalBytesExpectedToWrite || 0;
-        const progress = denom > 0 ? (downloadProgress.totalBytesWritten / denom) : 0;
-        if (onProgress) {
-          onProgress(progress);
+        if (denom > 0) {
+          if (fakeProgressInterval) {
+            clearInterval(fakeProgressInterval);
+            fakeProgressInterval = null;
+          }
+          const progress = downloadProgress.totalBytesWritten / denom;
+          if (onProgress) onProgress(progress);
         }
       }
     );
 
-    // 4. Start Download
-    const result = await downloadResumable.downloadAsync();
+    // 4. Start Download with Fake Progress Fallback
+    if (onProgress) {
+      fakeProgressInterval = setInterval(() => {
+        if (currentFakeProgress < 0.8) currentFakeProgress += 0.05;
+        else if (currentFakeProgress < 0.95) currentFakeProgress += 0.01;
+        onProgress(currentFakeProgress);
+      }, 500);
+    }
+
+    let result;
+    try {
+      result = await downloadResumable.downloadAsync();
+    } finally {
+      if (fakeProgressInterval) clearInterval(fakeProgressInterval);
+    }
     
     if (!result || result.status !== 200) {
       throw new Error('The download did not complete. Please try again.');
