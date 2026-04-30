@@ -533,43 +533,56 @@ app.post('/youtube/info', async (req, res) => {
 
 const ytdl = require('@distube/ytdl-core');
 
-// Proxy Streaming Endpoint — Avoids IP restrictions by streaming directly through our server!
-app.get('/youtube/stream', async (req, res) => {
+// Proxy Streaming Endpoint — Avoids IP restrictions by streaming directly through our server using yt-dlp
+app.get('/youtube/stream', (req, res) => {
   const { url, kind, h } = req.query || {};
   if (!url) return res.status(400).send('No URL provided');
 
   try {
-    const isValid = ytdl.validateURL(url);
-    if (!isValid) return res.status(400).send('Invalid YouTube URL');
+    const height = parseInt(h) || 720;
+    const format = kind === 'audio' 
+      ? 'bestaudio[ext=m4a]/bestaudio/best'
+      : `best[height<=${height}][ext=mp4]/best[ext=mp4]/best`;
 
-    const info = await ytdl.getInfo(url);
-    let format;
+    res.setHeader('Content-Type', kind === 'audio' ? 'audio/mp4' : 'video/mp4');
+    res.setHeader('Content-Disposition', `attachment; filename="youtube_${Date.now()}.${kind === 'audio' ? 'm4a' : 'mp4'}"`);
 
-    if (kind === 'audio') {
-      format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio' });
-      res.setHeader('Content-Type', 'audio/mp4');
-      res.setHeader('Content-Disposition', `attachment; filename="youtube_audio_${Date.now()}.m4a"`);
-    } else {
-      const height = parseInt(h) || 720;
-      format = ytdl.chooseFormat(info.formats, { quality: 'highest', filter: (f) => f.container === 'mp4' && f.hasAudio && f.hasVideo && f.height <= height });
-      if (!format) {
-        format = ytdl.chooseFormat(info.formats, { quality: 'highest', filter: (f) => f.container === 'mp4' && f.hasAudio && f.hasVideo });
+    const args = [
+      '-q', // quiet (no progress output in stdout)
+      '--no-warnings', // strictly suppress warnings
+      '--no-playlist',
+      ...getCommonArgs(),
+      '-f', format,
+      '-o', '-', // Output directly to stdout
+      url.trim()
+    ];
+
+    console.log(`Piping stream: yt-dlp ${args.join(' ')}`);
+
+    const child = spawn('yt-dlp', args);
+
+    child.stdout.pipe(res);
+
+    child.stderr.on('data', (data) => {
+      // yt-dlp might send warnings to stderr, we just log them
+      console.log(`[yt-dlp proxy] ${data.toString().trim()}`);
+    });
+
+    child.on('error', (err) => {
+      console.error('Failed to start yt-dlp proxy:', err);
+      if (!res.headersSent) res.status(500).send('Stream error');
+    });
+
+    req.on('close', () => {
+      // If the client aborts the download, kill the yt-dlp process
+      if (!child.killed) {
+        console.log('Client aborted download. Killing yt-dlp stream.');
+        child.kill();
       }
-      if (!format) {
-        format = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'audioandvideo' });
-      }
-      res.setHeader('Content-Type', 'video/mp4');
-      res.setHeader('Content-Disposition', `attachment; filename="youtube_video_${Date.now()}.mp4"`);
-    }
-
-    if (format && format.contentLength) {
-      res.setHeader('Content-Length', format.contentLength);
-    }
-
-    ytdl(url, { format }).pipe(res);
+    });
 
   } catch (err) {
-    console.error('ytdl-core streaming error:', err.message);
+    console.error('Stream setup error:', err.message);
     if (!res.headersSent) {
       res.status(500).send('Streaming failed.');
     }

@@ -229,7 +229,7 @@ export default function AboutScreen({ navigation }) {
             and problem solving.
           </Text>
           <View style={styles.techChipsRow}>
-            {['React Native', 'Node.js', 'MongoDB', 'PostgreSQL', 'Express', 'Next.js'].map((tech) => (
+            {['React JS', 'Node.js', 'MongoDB', 'PostgreSQL', 'Express', 'Next.js'].map((tech) => (
               <View key={tech} style={styles.techChip}>
                 <Text style={styles.techChipText}>{tech}</Text>
               </View>
