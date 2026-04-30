@@ -118,15 +118,15 @@ export default function HomeScreen({ navigation }) {
           </Text>
         </Animated.View>
 
-        {/* Action 01: Instagram Reels & Posts */}
+        {/* Action 01: Instagram Reels */}
         <AnimatedCard fadeAnim={fadeAnims[0]} onPress={() => navigation.navigate('Reels')}>
           <View style={styles.actionInfo}>
             <View>
-              <Text style={styles.actionTitle}>IG Reels & Posts</Text>
-              <Text style={styles.actionDesc}>Download videos & photos</Text>
+              <Text style={styles.actionTitle}>IG Reels</Text>
+              <Text style={styles.actionDesc}>Download high-def videos</Text>
             </View>
             <View style={styles.iconCircle}>
-              <Globe color="#000" size={20} />
+              <Play color="#000" size={20} />
             </View>
           </View>
           <View style={styles.previewBtn}>
@@ -135,7 +135,22 @@ export default function HomeScreen({ navigation }) {
           </View>
         </AnimatedCard>
 
-
+        {/* Action 02: Instagram Posts */}
+        <AnimatedCard fadeAnim={fadeAnims[1]} onPress={() => navigation.navigate('Posts')}>
+          <View style={styles.actionInfo}>
+            <View>
+              <Text style={styles.actionTitle}>IG Posts</Text>
+              <Text style={styles.actionDesc}>Download photos & carousels</Text>
+            </View>
+            <View style={styles.iconCircle}>
+              <LayoutGrid color="#000" size={20} />
+            </View>
+          </View>
+          <View style={styles.previewBtn}>
+            <Text style={styles.previewBtnText}>Proceed to Extraction</Text>
+            <ArrowRight color={COLORS.text} size={16} />
+          </View>
+        </AnimatedCard>
 
         {/* Action 03: Instagram Stories */}
         <AnimatedCard fadeAnim={fadeAnims[2]} onPress={() => navigation.navigate('Stories')}>

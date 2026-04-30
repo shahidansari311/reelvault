@@ -286,6 +286,9 @@ const getCommonArgs = () => {
   
   // Automatically try to use node for javascript runtimes if available (fixes n-sig challenges)
   args.push('--js-runtimes', 'node');
+  
+  // Explicitly allow remote component for External JS challenge solver (fixes new YouTube algo)
+  args.push('--remote-components', 'ejs:github');
 
   const cookies = getCookiesPath();
   if (cookies) {
