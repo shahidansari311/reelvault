@@ -59,8 +59,8 @@ export default function PostDownloaderScreen({ navigation }) {
     setError(null);
 
     const interval = setInterval(() => {
-      setFetchProgress(prev => (prev >= 0.9 ? prev : prev + 0.1));
-    }, 400);
+      setFetchProgress(prev => (prev >= 0.9 ? prev : prev + 0.02));
+    }, 200);
 
     try {
       const data = await fetchPostData(url);

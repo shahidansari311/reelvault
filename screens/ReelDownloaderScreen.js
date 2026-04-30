@@ -184,13 +184,13 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     setReelData(null);
     setError(null);
 
-    // Simulated progress for extraction
+    // Simulated progress for extraction (smooth 2% increments)
     const interval = setInterval(() => {
       setFetchProgress(prev => {
         if (prev >= 0.9) return prev;
-        return prev + 0.1;
+        return prev + 0.02;
       });
-    }, 400);
+    }, 200);
 
     try {
       const data = await fetchReelData(url);

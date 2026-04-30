@@ -155,30 +155,13 @@ export default function StoryViewerScreen({ navigation }) {
   const fetchIdRef = React.useRef(0);
   const fetchIntervalRef = React.useRef(null);
 
+  // Clean up intervals on unmount
   React.useEffect(() => {
-    if (!username) {
-      setStories([]);
-      setError(null);
-      if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
-      return;
-    }
-    
-    if (username.length < 3) return;
-    
-    // Don't auto-fetch if it looks like a complex link
-    if (username.includes('instagram.com') || username.includes('http')) return;
-
-    if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
-
-    debounceTimeoutRef.current = setTimeout(() => {
-      // Only auto-fetch if not already loading the same thing
-      handleFetch();
-    }, 500); // 500ms delay for faster search
-
     return () => {
       if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
+      if (fetchIntervalRef.current) clearInterval(fetchIntervalRef.current);
     };
-  }, [username]);
+  }, []);
 
 
 
@@ -221,10 +204,10 @@ export default function StoryViewerScreen({ navigation }) {
     
     target = target.replace('@', '').split('?')[0];
 
-    // Simulated progress
+    // Smooth simulated progress (2% increments)
     fetchIntervalRef.current = setInterval(() => {
-      setFetchProgress(prev => (prev < 0.9 ? prev + 0.1 : prev));
-    }, 400);
+      setFetchProgress(prev => (prev < 0.9 ? prev + 0.02 : prev));
+    }, 200);
 
     try {
       let results = [];
@@ -813,6 +796,7 @@ const styles = StyleSheet.create({
   },
   columnWrapper: {
     justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
   },
 });
 

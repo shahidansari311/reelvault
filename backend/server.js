@@ -461,9 +461,8 @@ app.post('/youtube/download', async (req, res) => {
     let args = ['--no-playlist', ...getCommonArgs(), '-o', outputTemplate];
 
     if (dlKind === 'video') {
-      // Hardened format selection for server stability
-      args.push('-f', 'bestvideo+bestaudio/best');
-      args.push('--merge-output-format', 'mp4');
+      // Use pre-muxed format to avoid ffmpeg dependency issues on free-tier servers
+      args.push('-f', `best[height<=${h}][ext=mp4]/best[ext=mp4]/best`);
     } else {
       args.push('-x', '--audio-format', 'mp3', '--audio-quality', '192K');
     }
@@ -473,20 +472,30 @@ app.post('/youtube/download', async (req, res) => {
     console.log('Starting Local Download:', baseName);
     await runYtDlp(args, { timeoutMs: 300000 });
 
-    if (!fs.existsSync(finalPath)) {
-      // Emergency fallback: Find any file generated with the basename
+    // Find the downloaded file — yt-dlp may have used a different extension
+    let downloadedFile = null;
+    if (fs.existsSync(finalPath)) {
+      downloadedFile = finalPath;
+    } else {
+      // Search /tmp for any file matching our basename
       const files = fs.readdirSync('/tmp').filter(f => f.startsWith(baseName));
-      if (files.length === 0) throw new Error('File generation failed');
-      const tempFile = path.join('/tmp', files[0]);
-      fs.renameSync(tempFile, finalPath);
+      if (files.length > 0) {
+        downloadedFile = path.join('/tmp', files[0]);
+      }
+    }
+
+    if (!downloadedFile) {
+      throw new Error('File generation failed — no output file found.');
     }
 
     // Move to public directory for serving
-    const publicPath = path.join(YT_DOWNLOADS_DIR, `${baseName}.${targetExt}`);
-    fs.renameSync(finalPath, publicPath);
+    const actualExt = path.extname(downloadedFile).replace('.', '') || targetExt;
+    const publicFileName = `${baseName}.${actualExt}`;
+    const publicPath = path.join(YT_DOWNLOADS_DIR, publicFileName);
+    fs.renameSync(downloadedFile, publicPath);
 
     return res.json({
-      downloadUrl: makePublicDownloadUrl(req, `${baseName}.${targetExt}`),
+      downloadUrl: makePublicDownloadUrl(req, publicFileName),
       title: 'YouTube Download',
       success: true
     });
@@ -603,7 +612,7 @@ app.post('/download/post', async (req, res) => {
   // Direct yt-dlp extraction (Cobalt instances are currently dead)
   const args = [
     '--dump-json',
-    '--no-playlist',
+    '--flat-playlist',
     '--no-warnings',
     '--no-check-certificates',
     '--geo-bypass',
@@ -622,7 +631,7 @@ app.post('/download/post', async (req, res) => {
   args.push(cleanUrl);
 
   try {
-    const { stdout } = await runYtDlp(args, { timeoutMs: 30000 });
+    const { stdout } = await runYtDlp(args, { timeoutMs: 45000 });
 
     // yt-dlp may output multiple JSON lines for carousel posts
     const jsonLines = stdout.trim().split('\n').filter(line => {
@@ -632,12 +641,18 @@ app.post('/download/post', async (req, res) => {
     const images = [];
     for (const line of jsonLines) {
       const info = JSON.parse(line);
-      // Prefer the direct URL if available
-      if (info.url) {
+      // Priority: url > thumbnail > thumbnails array
+      if (info.url && !info.url.includes('.mp4')) {
         images.push(info.url);
+      } else if (info.thumbnail) {
+        images.push(info.thumbnail);
       } else if (info.thumbnails && info.thumbnails.length > 0) {
         // Pick the highest resolution thumbnail
-        images.push(info.thumbnails[info.thumbnails.length - 1].url);
+        const sorted = [...info.thumbnails].sort((a, b) => (b.width || 0) - (a.width || 0));
+        images.push(sorted[0].url);
+      } else if (info.url) {
+        // Even if it's mp4, still offer it
+        images.push(info.url);
       }
     }
 
