@@ -441,77 +441,54 @@ app.post('/youtube/info', async (req, res) => {
   }
 });
 
-// YouTube Download Endpoint — Direct yt-dlp (Cobalt & Innertube removed, they're dead)
+// YouTube Download Endpoint — Extract direct URL, no server-side download needed
 app.post('/youtube/download', async (req, res) => {
   const { url, kind, maxHeight, quality, format } = req.body || {};
   if (!isValidYouTubeUrl(url)) return res.status(400).json({ error: 'Not a YouTube Link', message: 'That doesn\'t look like a YouTube link. Please paste a link from youtube.com or youtu.be.' });
 
   const dlKind = kind || (format === 'mp3' ? 'audio' : 'video');
-  const targetExt = dlKind === 'video' ? 'mp4' : 'mp3';
   const h = Number(maxHeight || (String(quality).replace('p', '')) || 720);
 
-  const id = `${Date.now()}_${Math.random().toString(16).slice(2, 6)}`;
-  const baseName = `savex_${id}`;
-  const finalPath = path.join('/tmp', `${baseName}.${targetExt}`);
-
-  // Direct yt-dlp download (no Cobalt/Innertube overhead)
-  const outputTemplate = path.join('/tmp', `${baseName}.%(ext)s`);
-
   try {
-    let args = ['--no-playlist', ...getCommonArgs(), '-o', outputTemplate];
+    let args = ['-g', '--no-playlist', ...getCommonArgs()];
 
     if (dlKind === 'video') {
-      // Use pre-muxed format to avoid ffmpeg dependency issues on free-tier servers
+      // Get the best pre-muxed mp4 stream URL (no ffmpeg needed)
       args.push('-f', `best[height<=${h}][ext=mp4]/best[ext=mp4]/best`);
     } else {
-      args.push('-x', '--audio-format', 'mp3', '--audio-quality', '192K');
+      // Get the best audio stream URL
+      args.push('-f', 'bestaudio[ext=m4a]/bestaudio/best');
     }
 
     args.push(url.trim());
 
-    console.log('Starting Local Download:', baseName);
-    await runYtDlp(args, { timeoutMs: 300000 });
+    console.log(`Extracting direct ${dlKind} URL...`);
+    const { stdout } = await runYtDlp(args, { timeoutMs: 60000 });
+    const directUrl = stdout.trim().split('\n')[0];
 
-    // Find the downloaded file — yt-dlp may have used a different extension
-    let downloadedFile = null;
-    if (fs.existsSync(finalPath)) {
-      downloadedFile = finalPath;
-    } else {
-      // Search /tmp for any file matching our basename
-      const files = fs.readdirSync('/tmp').filter(f => f.startsWith(baseName));
-      if (files.length > 0) {
-        downloadedFile = path.join('/tmp', files[0]);
-      }
+    if (!directUrl || !directUrl.startsWith('http')) {
+      throw new Error('Could not extract a download URL.');
     }
 
-    if (!downloadedFile) {
-      throw new Error('File generation failed — no output file found.');
-    }
-
-    // Move to public directory for serving
-    const actualExt = path.extname(downloadedFile).replace('.', '') || targetExt;
-    const publicFileName = `${baseName}.${actualExt}`;
-    const publicPath = path.join(YT_DOWNLOADS_DIR, publicFileName);
-    fs.renameSync(downloadedFile, publicPath);
-
+    console.log('Direct URL extracted successfully!');
     return res.json({
-      downloadUrl: makePublicDownloadUrl(req, publicFileName),
+      downloadUrl: directUrl,
       title: 'YouTube Download',
-      success: true
+      success: true,
+      source: 'direct'
     });
   } catch (e) {
     const details = e.stderr || e.err?.message || 'Download Error';
     console.error('YouTube download error:', details);
     
-    // Immediate Error Handling as requested
     if (details.includes('Only images are available') || details.includes('Requested format is not available')) {
        return res.status(400).json({ 
          error: 'Video Format Not Supported', 
-         message: 'This video cannot be downloaded because it either contains only images or the requested quality is not available on YouTube.' 
+         message: 'This video cannot be downloaded because the requested quality is not available.' 
        });
     }
 
-    return res.status(500).json({ error: 'Download Did Not Work', message: 'We couldn\'t download this video. YouTube may be blocking it. Please try again later or try a different video.' });
+    return res.status(500).json({ error: 'Download Did Not Work', message: 'We couldn\'t get the download link for this video. Please try again later.' });
   }
 });
 

@@ -135,24 +135,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         </AnimatedCard>
 
-        {/* Action 02: Instagram Posts */}
-        <AnimatedCard fadeAnim={fadeAnims[1]} onPress={() => navigation.navigate('Posts')}>
-          <View style={styles.actionInfo}>
-            <View>
-              <Text style={styles.actionTitle}>IG Posts</Text>
-              <Text style={styles.actionDesc}>Download photos & carousels</Text>
-            </View>
-            <View style={styles.iconCircle}>
-              <LayoutGrid color="#000" size={20} />
-            </View>
-          </View>
-          <View style={styles.previewBtn}>
-            <Text style={styles.previewBtnText}>Proceed to Extraction</Text>
-            <ArrowRight color={COLORS.text} size={16} />
-          </View>
-        </AnimatedCard>
-
-        {/* Action 03: Instagram Stories */}
+        {/* Action 02: Instagram Stories */}
         <AnimatedCard fadeAnim={fadeAnims[2]} onPress={() => navigation.navigate('Stories')}>
           <View style={styles.actionInfo}>
             <View>

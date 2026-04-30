@@ -5,10 +5,9 @@ import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { LayoutGrid, Search, Heart, Play, Video, Image as ImageIcon } from 'lucide-react-native';
+import { LayoutGrid, Search, Heart, Play, Video } from 'lucide-react-native';
 import HomeScreen from './screens/HomeScreen';
 import ReelDownloaderScreen from './screens/ReelDownloaderScreen';
-import PostDownloaderScreen from './screens/PostDownloaderScreen';
 import StoryViewerScreen from './screens/StoryViewerScreen';
 import YouTubeDownloaderScreen from './screens/YouTubeDownloaderScreen';
 import InAppPlayerScreen from './screens/InAppPlayerScreen';
@@ -95,7 +94,6 @@ export default function App() {
             let Icon;
             if (route.name === 'Home') Icon = LayoutGrid;
             else if (route.name === 'Reels') Icon = Video;
-            else if (route.name === 'Posts') Icon = ImageIcon;
             else if (route.name === 'YouTube') Icon = Play;
             else Icon = Heart;
 
@@ -122,7 +120,6 @@ export default function App() {
       >
         <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: 'Home' }} />
         <Tab.Screen name="Reels" component={ReelDownloaderScreen} options={{ tabBarLabel: 'Reels' }} />
-        <Tab.Screen name="Posts" component={PostDownloaderScreen} options={{ tabBarLabel: 'Posts' }} />
         <Tab.Screen name="YouTube" component={YouTubeDownloaderScreen} options={{ tabBarLabel: 'YouTube' }} />
         <Tab.Screen name="Stories" component={StoryViewerScreen} options={{ tabBarLabel: 'Stories' }} />
         <Tab.Screen 

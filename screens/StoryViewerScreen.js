@@ -3,6 +3,7 @@ import {
   StyleSheet, 
   View, 
   Text, 
+  TextInput,
   TouchableOpacity, 
   ActivityIndicator,
   Dimensions,
@@ -26,11 +27,11 @@ import {
   Play, 
   TrendingUp,
   Eye,
+  Trash2,
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 import { fetchStories, fetchReelData } from '../services/api';
 import { downloadFile } from '../utils/download';
-import { CustomInput } from '../components/CustomInput';
 import { ProgressBar } from '../components/ProgressBar';
 
 const { width, height } = Dimensions.get('window');
@@ -328,25 +329,26 @@ export default function StoryViewerScreen({ navigation }) {
       </View>
 
       <View style={styles.extractionCard}>
-        <CustomInput
-          placeholder={searchType === 'profile' ? "beingrimi_, cristiano..." : "Paste Instagram Story Link"}
-          value={username}
-          onChangeText={(text) => {
-            setUsername(text);
-            setError(null);
-            const cleanText = text.trim();
-            if (cleanText.includes('instagram.com') || cleanText.includes('http')) {
-              if (searchType !== 'link') setSearchType('link');
-            } else if (cleanText.length > 0 && !cleanText.includes('/') && !cleanText.includes(' ')) {
-              if (searchType !== 'profile') setSearchType('profile');
-            }
-          }}
-          onClear={() => {
-            setUsername('');
-            setError(null);
-          }}
-          icon={searchType === 'profile' ? User : Globe}
-          suffix={() => (
+        <View style={styles.inputRow}>
+          <User color={COLORS.textSecondary} size={18} style={{ marginRight: 12 }} />
+          <TextInput
+            style={styles.rawInput}
+            placeholder={searchType === 'profile' ? "beingrimi_, cristiano..." : "Paste Instagram Story Link"}
+            placeholderTextColor="rgba(255,255,255,0.3)"
+            value={username}
+            onChangeText={(text) => {
+              setUsername(text);
+              setError(null);
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {username.length > 0 && (
+              <TouchableOpacity onPress={() => { setUsername(''); setError(null); setStories([]); }} style={{ marginRight: 12 }}>
+                <Trash2 color={COLORS.textSecondary} size={18} />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity 
               style={styles.inlinePasteBtn} 
               onPress={async () => {
@@ -356,15 +358,15 @@ export default function StoryViewerScreen({ navigation }) {
                 setError(null);
                 if (cleanText.includes('instagram.com') || cleanText.includes('http')) {
                   setSearchType('link');
-                } else if (cleanText.length > 0 && !cleanText.includes('/') && !cleanText.includes(' ')) {
+                } else {
                   setSearchType('profile');
                 }
               }}
             >
               <Text style={styles.pasteBubbleText}>Paste</Text>
             </TouchableOpacity>
-          )}
-        />
+          </View>
+        </View>
         
         <TouchableOpacity 
           style={[styles.fetchBtn, loading && { opacity: 0.7 }]} 
@@ -440,6 +442,7 @@ export default function StoryViewerScreen({ navigation }) {
           />
         )}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 150 }}
       />
 
@@ -602,6 +605,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.glassBorder,
     ...SHADOWS.glass,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    height: 60,
+    width: '100%',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    ...SHADOWS.glass,
+  },
+  rawInput: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 15,
+    height: '100%',
   },
   inlinePasteBtn: {
     backgroundColor: 'rgba(255,255,255,0.1)',
