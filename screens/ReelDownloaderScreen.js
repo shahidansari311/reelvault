@@ -204,11 +204,9 @@ export default function ReelDownloaderScreen({ navigation, route }) {
       const data = await fetchReelData(url);
       clearInterval(interval);
       setFetchProgress(1);
-      setTimeout(() => {
-        setReelData(data);
-        saveToHistory({ ...data, date: new Date().toISOString(), originalUrl: url });
-        setLoading(false);
-      }, 500);
+      setReelData(data);
+      saveToHistory({ ...data, date: new Date().toISOString(), originalUrl: url });
+      setLoading(false);
     } catch (err) {
       clearInterval(interval);
       const serverData = err.response?.data;

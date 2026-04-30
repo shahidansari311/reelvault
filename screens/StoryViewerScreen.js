@@ -173,7 +173,7 @@ export default function StoryViewerScreen({ navigation }) {
     debounceTimeoutRef.current = setTimeout(() => {
       // Only auto-fetch if not already loading the same thing
       handleFetch();
-    }, 1000); // 1.0s delay is more comfortable for typing
+    }, 500); // 500ms delay for faster search
 
     return () => {
       if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
@@ -253,11 +253,9 @@ export default function StoryViewerScreen({ navigation }) {
       }
 
       setFetchProgress(1);
-      setTimeout(() => {
-        if (currentFetchId !== fetchIdRef.current) return;
-        setStories(results);
-        setLoading(false);
-      }, 500);
+      if (currentFetchId !== fetchIdRef.current) return;
+      setStories(results);
+      setLoading(false);
 
     } catch (err) {
       if (currentFetchId !== fetchIdRef.current) return;

@@ -281,14 +281,11 @@ const getCommonArgs = () => {
     '--sleep-interval', '2', 
     '--max-sleep-interval', '5',
     '--retries', '5',
-    '--extractor-args', 'youtube:player_client=android',
     '--no-check-certificates'
   ];
   
-  // Set Node path for solving n-challenges
-  if (process.env.NODE_PATH) {
-    args.push('--javascript-delay', '2');
-  }
+  // Automatically try to use node for javascript runtimes if available (fixes n-sig challenges)
+  args.push('--js-runtimes', 'node');
 
   const cookies = getCookiesPath();
   if (cookies) {
@@ -675,12 +672,12 @@ app.post('/download', async (req, res) => {
   // 2. Check for Authentication (Priority: Manual File > Local Browser Auto-Auth)
   // 2. Build arguments and use spawn safely
   const args = [
-    '-g',
+    '--dump-json',
     '--no-playlist',
     '--no-warnings',
     '--no-check-certificates',
     '--geo-bypass',
-    '--format', 'best[ext=mp4]/best',
+    '--ignore-no-formats-error',
     '--add-header', 'Sec-Ch-Ua: "Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
     '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
     '--referer', 'https://www.instagram.com/'
@@ -696,14 +693,33 @@ app.post('/download', async (req, res) => {
 
   try {
     const { stdout } = await runYtDlp(args, { timeoutMs: 30000 });
-    const videoUrl = stdout.trim();
-    if (!videoUrl) {
+    
+    let info = {};
+    try {
+      const firstLine = stdout.trim().split('\n')[0];
+      info = JSON.parse(firstLine);
+    } catch (e) {
+      console.warn('Could not parse yt-dlp json, trying to extract URL string');
+    }
+
+    let mediaUrl = info.url;
+    let type = 'video';
+
+    // Fallback to highest quality thumbnail (image) if no video URL is found
+    if (!mediaUrl && info.thumbnails && info.thumbnails.length > 0) {
+      mediaUrl = info.thumbnails[info.thumbnails.length - 1].url;
+      type = 'image';
+    } else if (!mediaUrl && stdout.startsWith('http')) {
+      mediaUrl = stdout.trim();
+    }
+
+    if (!mediaUrl) {
       return res.status(404).json({ 
-        error: 'Could Not Get Video', 
-        message: 'We couldn\'t find a downloadable video at this link. Instagram might be blocking us right now — please try again in a few minutes.' 
+        error: 'Could Not Get Media', 
+        message: 'We couldn\'t find a downloadable video or image at this link.' 
       });
     }
-    res.json({ videoUrl });
+    res.json({ videoUrl: mediaUrl, type });
   } catch (error) {
     const stderr = error.stderr || '';
     const message = error.err?.message || '';
