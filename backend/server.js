@@ -645,35 +645,158 @@ app.post('/youtube/download', async (req, res) => {
   }
 });
 
-// 1. Download Reel Endpoint (Powered by yt-dlp)
-app.post('/download', async (req, res) => {
+// ============================================================
+// 1A. Download REEL Endpoint — Strictly VIDEO extraction
+// ============================================================
+app.post('/download/reel', async (req, res) => {
   const { reelUrl } = req.body;
 
   if (!reelUrl) {
     return res.status(400).json({ error: 'No Link Provided', message: 'Please paste an Instagram Reel link first.' });
   }
 
-  // 1. Sanitize the URL
   const cleanUrl = reelUrl.trim();
-  console.log('Starting Reel extraction for:', cleanUrl);
+  console.log('Starting REEL (video) extraction for:', cleanUrl);
 
-  // 🏁 Strategy 1: Try Cobalt API (High reliability, bypasses cookie issues)
+  // 🏁 Strategy 1: Try Cobalt API
   console.log('Attempting Cobalt for Instagram Reel...');
   try {
     const cobaltUrl = await downloadWithCobalt(cleanUrl);
     if (cobaltUrl) {
       console.log('Cobalt success for Instagram Reel!');
-      return res.json({ videoUrl: cobaltUrl });
+      return res.json({ videoUrl: cobaltUrl, type: 'video' });
     }
   } catch (e) {
-    console.warn('Cobalt Instagram attempt failed:', e.message);
+    console.warn('Cobalt Instagram reel attempt failed:', e.message);
   }
 
-  console.log('Cobalt failed or returned no URL, falling back to yt-dlp.');
+  console.log('Cobalt failed, falling back to yt-dlp for reel video.');
 
-  // 🏁 Strategy 2: Fallback to local yt-dlp
-  // 2. Check for Authentication (Priority: Manual File > Local Browser Auto-Auth)
-  // 2. Build arguments and use spawn safely
+  // 🏁 Strategy 2: yt-dlp — force VIDEO format only (no image fallback)
+  const args = [
+    '-g',
+    '--no-playlist',
+    '--no-warnings',
+    '--no-check-certificates',
+    '--geo-bypass',
+    '--format', 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio/best',
+    '--add-header', 'Sec-Ch-Ua: "Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
+    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    '--referer', 'https://www.instagram.com/'
+  ];
+
+  if (COOKIES_PATH) {
+    args.push('--cookies', COOKIES_PATH);
+  } else {
+    args.push('--cookies-from-browser', 'chrome', '--cookies-from-browser', 'edge', '--cookies-from-browser', 'brave');
+  }
+
+  args.push(cleanUrl);
+
+  try {
+    const { stdout } = await runYtDlp(args, { timeoutMs: 30000 });
+    const videoUrl = stdout.trim().split('\n')[0];
+
+    if (!videoUrl || !videoUrl.startsWith('http')) {
+      return res.status(404).json({
+        error: 'Could Not Get Video',
+        message: 'We couldn\'t extract the video from this Reel. Instagram might be blocking us — please try again in a few minutes.'
+      });
+    }
+
+    res.json({ videoUrl, type: 'video' });
+  } catch (error) {
+    const stderr = error.stderr || '';
+    const message = error.err?.message || '';
+    console.error('Reel Extraction Error:', stderr || message);
+
+    let errorMsg = 'Something Went Wrong';
+    let subMsg = 'We couldn\'t get this Reel. The link might be broken or the reel may no longer exist.';
+    let statusCode = 500;
+
+    if (stderr.includes('Login required') || stderr.includes('Private') || stderr.includes('private') || stderr.includes('login_required') || stderr.includes('login required')) {
+      errorMsg = 'This Account is Private';
+      subMsg = 'This Reel belongs to a private account. We can only download Reels from public accounts.';
+      statusCode = 403;
+    } else if (stderr.includes('404') || stderr.includes('Not Found') || stderr.includes('does not exist')) {
+      errorMsg = 'Reel Not Found';
+      subMsg = 'This Reel has been deleted or the link is wrong. Please double-check the link and try again.';
+      statusCode = 404;
+    } else if (error.err?.killed || message.includes('timeout')) {
+      errorMsg = 'Taking Too Long';
+      subMsg = 'The request is taking too long. This can happen with large videos or when Instagram is slow. Please try again.';
+      statusCode = 504;
+    } else if (stderr.includes('Sign in') || stderr.includes('Rate limit') || stderr.includes('429') || stderr.includes('too many') || stderr.includes('login required')) {
+      errorMsg = 'Too Many Requests';
+      subMsg = 'Instagram is temporarily limiting our access. Please wait a minute or two and try again.';
+      statusCode = 429;
+    }
+
+    return res.status(statusCode).json({
+      error: errorMsg,
+      message: subMsg,
+      details: process.env.NODE_ENV === 'development' ? stderr : undefined
+    });
+  }
+});
+
+// ============================================================
+// 1B. Download POST Endpoint — Strictly IMAGE/PHOTO extraction
+// ============================================================
+app.post('/download/post', async (req, res) => {
+  const { reelUrl } = req.body;
+
+  if (!reelUrl) {
+    return res.status(400).json({ error: 'No Link Provided', message: 'Please paste an Instagram Post link first.' });
+  }
+
+  const cleanUrl = reelUrl.trim();
+  console.log('Starting POST (image) extraction for:', cleanUrl);
+
+  // 🏁 Strategy 1: Try Cobalt API
+  console.log('Attempting Cobalt for Instagram Post...');
+  try {
+    for (const instance of COBALT_INSTANCES) {
+      try {
+        const response = await axios.post(`${instance}/`, {
+          url: cleanUrl,
+          filenameStyle: 'pretty',
+        }, {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'User-Agent': 'SaveX-Client/1.3',
+          },
+          timeout: 15000,
+        });
+
+        const data = response.data;
+
+        // Cobalt picker mode = carousel post with multiple images
+        if (data.status === 'picker' && Array.isArray(data.picker)) {
+          const images = data.picker.map(item => item.url).filter(Boolean);
+          if (images.length > 0) {
+            console.log(`Cobalt success for Post! Found ${images.length} images.`);
+            return res.json({ images, type: 'image' });
+          }
+        }
+        // Single image/redirect
+        if ((data.status === 'redirect' || data.status === 'tunnel') && data.url) {
+          console.log('Cobalt success for single Post image!');
+          return res.json({ images: [data.url], type: 'image' });
+        }
+      } catch (err) {
+        console.warn(`Cobalt post instance ${instance} failed:`, err.message);
+        continue;
+      }
+    }
+  } catch (e) {
+    console.warn('Cobalt post extraction failed completely.');
+  }
+
+  console.log('Cobalt failed, falling back to yt-dlp for post image.');
+
+  // 🏁 Strategy 2: yt-dlp --dump-json to extract image URLs
   const args = [
     '--dump-json',
     '--no-playlist',
@@ -696,53 +819,52 @@ app.post('/download', async (req, res) => {
 
   try {
     const { stdout } = await runYtDlp(args, { timeoutMs: 30000 });
-    
-    let info = {};
-    try {
-      const firstLine = stdout.trim().split('\n')[0];
-      info = JSON.parse(firstLine);
-    } catch (e) {
-      console.warn('Could not parse yt-dlp json, trying to extract URL string');
+
+    // yt-dlp may output multiple JSON lines for carousel posts
+    const jsonLines = stdout.trim().split('\n').filter(line => {
+      try { JSON.parse(line); return true; } catch { return false; }
+    });
+
+    const images = [];
+    for (const line of jsonLines) {
+      const info = JSON.parse(line);
+      // Prefer the direct URL if available
+      if (info.url) {
+        images.push(info.url);
+      } else if (info.thumbnails && info.thumbnails.length > 0) {
+        // Pick the highest resolution thumbnail
+        images.push(info.thumbnails[info.thumbnails.length - 1].url);
+      }
     }
 
-    let mediaUrl = info.url;
-    let type = 'video';
-
-    // Fallback to highest quality thumbnail (image) if no video URL is found
-    if (!mediaUrl && info.thumbnails && info.thumbnails.length > 0) {
-      mediaUrl = info.thumbnails[info.thumbnails.length - 1].url;
-      type = 'image';
-    } else if (!mediaUrl && stdout.startsWith('http')) {
-      mediaUrl = stdout.trim();
-    }
-
-    if (!mediaUrl) {
-      return res.status(404).json({ 
-        error: 'Could Not Get Media', 
-        message: 'We couldn\'t find a downloadable video or image at this link.' 
+    if (images.length === 0) {
+      return res.status(404).json({
+        error: 'Could Not Get Photos',
+        message: 'We couldn\'t find any downloadable images at this link. The post may have been deleted or is from a private account.'
       });
     }
-    res.json({ videoUrl: mediaUrl, type });
+
+    res.json({ images, type: 'image' });
   } catch (error) {
     const stderr = error.stderr || '';
     const message = error.err?.message || '';
-    console.error('Extraction Error Details:', stderr || message);
-    
+    console.error('Post Extraction Error:', stderr || message);
+
     let errorMsg = 'Something Went Wrong';
-    let subMsg = 'We couldn\'t get this video. The link might be broken or the post may no longer exist. Please check the link and try again.';
+    let subMsg = 'We couldn\'t get this post. The link might be broken or the post may no longer exist.';
     let statusCode = 500;
 
     if (stderr.includes('Login required') || stderr.includes('Private') || stderr.includes('private') || stderr.includes('login_required') || stderr.includes('login required')) {
       errorMsg = 'This Account is Private';
-      subMsg = 'This Reel belongs to a private account. We can only download Reels from public accounts.';
+      subMsg = 'This post belongs to a private account. We can only download from public accounts.';
       statusCode = 403;
     } else if (stderr.includes('404') || stderr.includes('Not Found') || stderr.includes('does not exist')) {
-      errorMsg = 'Reel Not Found';
-      subMsg = 'This Reel has been deleted or the link is wrong. Please double-check the link and try again.';
+      errorMsg = 'Post Not Found';
+      subMsg = 'This post has been deleted or the link is wrong. Please double-check the link and try again.';
       statusCode = 404;
     } else if (error.err?.killed || message.includes('timeout')) {
       errorMsg = 'Taking Too Long';
-      subMsg = 'The request is taking too long. This can happen with large videos or when Instagram is slow. Please try again.';
+      subMsg = 'The request is taking too long. Please try again.';
       statusCode = 504;
     } else if (stderr.includes('Sign in') || stderr.includes('Rate limit') || stderr.includes('429') || stderr.includes('too many') || stderr.includes('login required')) {
       errorMsg = 'Too Many Requests';
@@ -750,12 +872,19 @@ app.post('/download', async (req, res) => {
       statusCode = 429;
     }
 
-    return res.status(statusCode).json({ 
-      error: errorMsg, 
+    return res.status(statusCode).json({
+      error: errorMsg,
       message: subMsg,
       details: process.env.NODE_ENV === 'development' ? stderr : undefined
     });
   }
+});
+
+// Legacy compat: old /download route redirects to /download/reel
+app.post('/download', async (req, res) => {
+  // Forward to the reel endpoint for backward compatibility
+  req.url = '/download/reel';
+  app.handle(req, res);
 });
 
 // 2. View Stories Endpoint (Robust yt-dlp extraction)

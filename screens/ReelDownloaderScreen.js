@@ -42,7 +42,7 @@ import { useIsFocused } from '@react-navigation/native';
 const { width } = Dimensions.get('window');
 
 const PreviewCard = ({ reelData, downloading, downloadProgress, handleDownload, handleShare, isFocused }) => {
-  const isVideo = reelData.videoUrl.includes('.mp4') || reelData.videoUrl.includes('video');
+  // Reels are always video
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const scaleAnim = React.useRef(new Animated.Value(0.95)).current;
   
@@ -58,40 +58,32 @@ const PreviewCard = ({ reelData, downloading, downloadProgress, handleDownload, 
   return (
     <Animated.View style={[styles.previewContainer, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
       <View style={styles.previewFrame}>
-        {isVideo ? (
-          <Video
-            key={reelData.videoUrl} 
-            source={{ uri: reelData.videoUrl }}
-            rate={1.0}
-            volume={1.0}
-            isMuted={false}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay={isFocused && !downloading}
-            isLooping
-            style={styles.videoPlayer}
-            useNativeControls={!downloading}
-          />
-        ) : (
-          <Image
-            source={{ uri: reelData.videoUrl }}
-            style={styles.videoPlayer}
-            resizeMode="contain"
-          />
-        )}
+        <Video
+          key={reelData.videoUrl}
+          source={{ uri: reelData.videoUrl }}
+          rate={1.0}
+          volume={1.0}
+          isMuted={false}
+          resizeMode={ResizeMode.COVER}
+          shouldPlay={isFocused && !downloading}
+          isLooping
+          style={styles.videoPlayer}
+          useNativeControls={!downloading}
+        />
       </View>
 
       {downloading && (
-        <ProgressBar progress={downloadProgress} label={`Downloading ${isVideo ? 'Video' : 'Photo'}`} />
+        <ProgressBar progress={downloadProgress} label="Downloading Video" />
       )}
 
       <LinearGradient colors={['rgba(20,20,25,0.8)', 'rgba(10,10,15,0.95)']} style={styles.metaCard}>
         <View style={styles.metaHeader}>
           <View style={styles.metaIconContainer}>
-            {isVideo ? <VideoIcon color={COLORS.primary} size={20} /> : <ImageIcon color={COLORS.primary} size={20} />}
+            <VideoIcon color={COLORS.primary} size={20} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.metaTitle} numberOfLines={1}>{reelData.title || (isVideo ? 'Extracted Video' : 'Extracted Photo')}</Text>
-            <Text style={styles.metaSubtitle}>{isVideo ? 'High-Definition MP4' : 'Original JPG Image'}</Text>
+            <Text style={styles.metaTitle} numberOfLines={1}>{reelData.title || 'Extracted Reel'}</Text>
+            <Text style={styles.metaSubtitle}>High-Definition MP4</Text>
           </View>
         </View>
         
@@ -107,7 +99,7 @@ const PreviewCard = ({ reelData, downloading, downloadProgress, handleDownload, 
               <Download color="#000" size={18} style={{ marginRight: 10 }} />
             )}
             <Text style={styles.downloadActionText}>
-              {downloading ? `SAVING ${Math.round(downloadProgress * 100)}%` : `SAVE ${isVideo ? 'VIDEO' : 'PHOTO'}`}
+              {downloading ? `SAVING ${Math.round(downloadProgress * 100)}%` : 'SAVE VIDEO'}
             </Text>
           </TouchableOpacity>
 
@@ -243,23 +235,23 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     setDownloading(true);
     setDownloadProgress(0);
     
-    const isVideo = reelData.videoUrl.includes('.mp4') || reelData.videoUrl.includes('video');
-    const ext = isVideo ? 'mp4' : 'jpg';
-    const fileName = `ig_media_${Date.now()}.${ext}`;
+    const isVideo = true; // Reels are always video
+    const ext = 'mp4';
+    const fileName = `ig_reel_${Date.now()}.mp4`;
     
     const success = await downloadFile(
       reelData.videoUrl, 
       fileName, 
       (progress) => setDownloadProgress(progress),
       {
-        title: reelData.title || (isVideo ? 'Instagram Reel' : 'Instagram Photo'),
+        title: reelData.title || 'Instagram Reel',
         platform: 'instagram',
-        format: isVideo ? 'MP4 Video' : 'JPG Image'
+        format: 'MP4 Video'
       }
     );
     
     if (success) {
-      Alert.alert('Saved!', `${isVideo ? 'Video' : 'Photo'} saved to your gallery.`);
+      Alert.alert('Saved!', 'Video saved to your gallery.');
     }
     setDownloading(false);
     setDownloadProgress(0);
@@ -307,17 +299,17 @@ export default function ReelDownloaderScreen({ navigation, route }) {
         {/* Title Section */}
         <View style={styles.heroSection}>
           <Text style={styles.heroTitle}>
-            Download <Text style={{ fontStyle: 'italic', fontWeight: '400', color: COLORS.primary }}>Media.</Text>
+            Download <Text style={{ fontStyle: 'italic', fontWeight: '400', color: COLORS.primary }}>Reels.</Text>
           </Text>
           <Text style={styles.heroSub}>
-            Vault your favorite cinematic reels and photo posts in high-definition. Simply paste any Instagram link below to begin the extraction.
+            Vault your favorite cinematic reels in high-definition. Simply paste any Instagram Reel link below to begin the extraction.
           </Text>
         </View>
 
         {/* Input Card */}
         <View style={styles.extractionCard}>
           <CustomInput
-            placeholder="https://www.instagram.com/reel/... or /p/..."
+            placeholder="https://www.instagram.com/reel/..."
             value={url}
             onChangeText={(text) => {
               setUrl(text);

@@ -3,183 +3,49 @@ import {
   StyleSheet,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
   Keyboard,
-  Share,
   Image,
   Dimensions,
   ScrollView,
   Animated,
+  FlatList,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Video, ResizeMode } from 'expo-av';
-import { 
-  Download, 
-  Link2 as LinkIcon, 
-  History as HistoryIcon, 
-  Trash2,
-  Share2,
-  CheckCircle,
-  Play,
-  LayoutGrid,
+import {
+  Download,
+  Link2 as LinkIcon,
   ChevronLeft,
   Shield,
-  Video as VideoIcon,
-  Image as ImageIcon
+  Image as ImageIcon,
+  ChevronRight,
+  X,
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
-import { fetchReelData } from '../services/api';
+import { fetchPostData } from '../services/api';
 import { downloadFile } from '../utils/download';
 import { CustomInput } from '../components/CustomInput';
 import { ProgressBar } from '../components/ProgressBar';
-import { useIsFocused } from '@react-navigation/native';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
-const PreviewCard = ({ reelData, downloading, downloadProgress, handleDownload, handleShare, isFocused }) => {
-  const isVideo = reelData.videoUrl.includes('.mp4') || reelData.videoUrl.includes('video');
-  const fadeAnim = React.useRef(new Animated.Value(0)).current;
-  const scaleAnim = React.useRef(new Animated.Value(0.95)).current;
-  
-  React.useEffect(() => {
-    fadeAnim.setValue(0);
-    scaleAnim.setValue(0.95);
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.spring(scaleAnim, { toValue: 1, friction: 6, useNativeDriver: true })
-    ]).start();
-  }, [reelData]);
-
-  return (
-    <Animated.View style={[styles.previewContainer, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
-      <View style={styles.previewFrame}>
-        {isVideo ? (
-          <Video
-            key={reelData.videoUrl} 
-            source={{ uri: reelData.videoUrl }}
-            rate={1.0}
-            volume={1.0}
-            isMuted={false}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay={isFocused && !downloading}
-            isLooping
-            style={styles.videoPlayer}
-            useNativeControls={!downloading}
-          />
-        ) : (
-          <Image
-            source={{ uri: reelData.videoUrl }}
-            style={styles.videoPlayer}
-            resizeMode="contain"
-          />
-        )}
-      </View>
-
-      {downloading && (
-        <ProgressBar progress={downloadProgress} label={`Downloading ${isVideo ? 'Video' : 'Photo'}`} />
-      )}
-
-      <LinearGradient colors={['rgba(20,20,25,0.8)', 'rgba(10,10,15,0.95)']} style={styles.metaCard}>
-        <View style={styles.metaHeader}>
-          <View style={styles.metaIconContainer}>
-            {isVideo ? <VideoIcon color={COLORS.primary} size={20} /> : <ImageIcon color={COLORS.primary} size={20} />}
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.metaTitle} numberOfLines={1}>{reelData.title || (isVideo ? 'Extracted Video' : 'Extracted Photo')}</Text>
-            <Text style={styles.metaSubtitle}>{isVideo ? 'High-Definition MP4' : 'Original JPG Image'}</Text>
-          </View>
-        </View>
-        
-        <View style={styles.actionGrid}>
-          <TouchableOpacity 
-            style={[styles.downloadActionBtn, downloading && { opacity: 0.5, backgroundColor: COLORS.textSecondary }]}
-            onPress={handleDownload}
-            disabled={downloading}
-          >
-            {downloading ? (
-              <ActivityIndicator color="#000" size="small" style={{ marginRight: 10 }} />
-            ) : (
-              <Download color="#000" size={18} style={{ marginRight: 10 }} />
-            )}
-            <Text style={styles.downloadActionText}>
-              {downloading ? `SAVING ${Math.round(downloadProgress * 100)}%` : `SAVE ${isVideo ? 'VIDEO' : 'PHOTO'}`}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.shareActionBtn, downloading && { opacity: 0.5 }]} 
-            onPress={handleShare}
-            disabled={downloading}
-          >
-            <Share2 color={COLORS.text} size={20} />
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-    </Animated.View>
-  );
-};
-
-export default function PostDownloaderScreen({ navigation, route }) {
-  const isFocused = useIsFocused();
-
+export default function PostDownloaderScreen({ navigation }) {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetchProgress, setFetchProgress] = useState(0);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
-  const [reelData, setReelData] = useState(null);
-  const [history, setHistory] = useState([]);
+  const [images, setImages] = useState([]);
   const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (route.params?.autoPaste) {
-      handlePaste();
-    } else {
-      checkClipboard();
-    }
-    loadHistory();
-  }, [route.params?.autoPaste]);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   const handlePaste = async () => {
     const text = await Clipboard.getStringAsync();
     if (text.includes('instagram.com/')) {
-      setUrl(text);
-    }
-  };
-
-  const loadHistory = async () => {
-    try {
-      const saved = await AsyncStorage.getItem('reel_history');
-      if (saved) setHistory(JSON.parse(saved));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const saveToHistory = async (data) => {
-    try {
-      const newHistory = [data, ...history.filter(h => h.videoUrl !== data.videoUrl)].slice(0, 10);
-      setHistory(newHistory);
-      await AsyncStorage.setItem('reel_history', JSON.stringify(newHistory));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const clearHistory = async () => {
-    setHistory([]);
-    await AsyncStorage.removeItem('reel_history');
-  };
-
-  const checkClipboard = async () => {
-    const text = await Clipboard.getStringAsync();
-    const isInstagram = text.includes('instagram.com/') || text.includes('instagr.am/');
-    if (isInstagram && (text.includes('/reel/') || text.includes('/reels/') || text.includes('/p/'))) {
       setUrl(text);
     }
   };
@@ -189,23 +55,18 @@ export default function PostDownloaderScreen({ navigation, route }) {
     Keyboard.dismiss();
     setLoading(true);
     setFetchProgress(0);
-    setReelData(null);
+    setImages([]);
     setError(null);
 
-    // Simulated progress for extraction
     const interval = setInterval(() => {
-      setFetchProgress(prev => {
-        if (prev >= 0.9) return prev;
-        return prev + 0.1;
-      });
+      setFetchProgress(prev => (prev >= 0.9 ? prev : prev + 0.1));
     }, 400);
 
     try {
-      const data = await fetchReelData(url);
+      const data = await fetchPostData(url);
       clearInterval(interval);
       setFetchProgress(1);
-      setReelData(data);
-      saveToHistory({ ...data, date: new Date().toISOString(), originalUrl: url });
+      setImages(data.images || []);
       setLoading(false);
     } catch (err) {
       clearInterval(interval);
@@ -213,14 +74,14 @@ export default function PostDownloaderScreen({ navigation, route }) {
       const status = err.response?.status;
 
       let errorTitle = serverData?.error || 'Something Went Wrong';
-      let errorMsg = serverData?.message || err.message || 'We couldn\'t get this video. Please check the link and try again.';
+      let errorMsg = serverData?.message || err.message || 'We couldn\'t get this post. Please check the link and try again.';
 
       if (status === 403) {
         errorTitle = serverData?.error || 'This Account is Private';
-        errorMsg = serverData?.message || 'This Reel belongs to a private account. We can only download from public accounts.';
+        errorMsg = serverData?.message || 'This post belongs to a private account. We can only download from public accounts.';
       } else if (status === 404) {
-        errorTitle = serverData?.error || 'Reel Not Found';
-        errorMsg = serverData?.message || 'This Reel was not found. It may have been deleted or the link is wrong.';
+        errorTitle = serverData?.error || 'Post Not Found';
+        errorMsg = serverData?.message || 'This post was not found. It may have been deleted or the link is wrong.';
       } else if (status === 429) {
         errorTitle = serverData?.error || 'Too Many Requests';
         errorMsg = serverData?.message || 'Instagram is limiting our access right now. Please wait a minute and try again.';
@@ -237,53 +98,93 @@ export default function PostDownloaderScreen({ navigation, route }) {
     }
   };
 
-
-  const handleDownload = async () => {
-    if (!reelData?.videoUrl) return;
+  const handleDownloadImage = async (imageUrl, index) => {
+    if (!imageUrl) return;
     setDownloading(true);
     setDownloadProgress(0);
-    
-    const isVideo = reelData.videoUrl.includes('.mp4') || reelData.videoUrl.includes('video');
-    const ext = isVideo ? 'mp4' : 'jpg';
-    const fileName = `ig_media_${Date.now()}.${ext}`;
-    
+    const fileName = `ig_post_${Date.now()}_${index || 0}.jpg`;
+
     const success = await downloadFile(
-      reelData.videoUrl, 
-      fileName, 
-      (progress) => setDownloadProgress(progress),
+      imageUrl,
+      fileName,
+      (p) => setDownloadProgress(p),
       {
-        title: reelData.title || (isVideo ? 'Instagram Reel' : 'Instagram Photo'),
+        title: 'Instagram Post',
         platform: 'instagram',
-        format: isVideo ? 'MP4 Video' : 'JPG Image'
+        format: 'JPG Image'
       }
     );
-    
+
     if (success) {
-      Alert.alert('Saved!', `${isVideo ? 'Video' : 'Photo'} saved to your gallery.`);
+      Alert.alert('Saved!', 'Photo saved to your gallery.');
     }
     setDownloading(false);
     setDownloadProgress(0);
   };
 
-  const handleShare = async () => {
-    if (!reelData?.videoUrl) return;
-    try {
-      await Share.share({
-        message: `Check out this Reel I found via SaveX! \n\n${url}`,
-        url: reelData.videoUrl
-      });
-    } catch (error) {
-      console.error(error);
+  const handleDownloadAll = async () => {
+    if (images.length === 0) return;
+    setDownloading(true);
+    setDownloadProgress(0);
+
+    for (let i = 0; i < images.length; i++) {
+      setDownloadProgress((i) / images.length);
+      const fileName = `ig_post_${Date.now()}_${i}.jpg`;
+      await downloadFile(
+        images[i],
+        fileName,
+        () => {},
+        {
+          title: `Instagram Post (${i + 1}/${images.length})`,
+          platform: 'instagram',
+          format: 'JPG Image'
+        }
+      );
     }
+
+    setDownloadProgress(1);
+    Alert.alert('Saved!', `${images.length} photo(s) saved to your gallery.`);
+    setDownloading(false);
+    setDownloadProgress(0);
+  };
+
+  const renderImageCard = (imageUrl, index) => {
+    const fadeAnim = React.useRef(new Animated.Value(0)).current;
+    React.useEffect(() => {
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, delay: index * 80, useNativeDriver: true }).start();
+    }, []);
+
+    return (
+      <Animated.View key={index} style={[styles.imageCard, { opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
+        <TouchableOpacity
+          onPress={() => setSelectedImage(imageUrl)}
+          activeOpacity={0.85}
+          style={styles.imageCardInner}
+        >
+          <Image source={{ uri: imageUrl }} style={styles.imageThumb} resizeMode="cover" />
+          <View style={styles.imageOverlay}>
+            <Text style={styles.imageIndex}>{index + 1}</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.imageSaveBtn, downloading && { opacity: 0.5 }]}
+          onPress={() => handleDownloadImage(imageUrl, index)}
+          disabled={downloading}
+        >
+          <Download color="#000" size={16} />
+          <Text style={styles.imageSaveBtnText}>Save</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
   };
 
   return (
-    <LinearGradient 
-      colors={['#0A0A0B', '#151518', '#050505']} 
+    <LinearGradient
+      colors={['#0A0A0B', '#151518', '#050505']}
       style={styles.container}
     >
-      <LinearGradient 
-        colors={['rgba(180, 185, 255, 0.03)', 'transparent', 'transparent']} 
+      <LinearGradient
+        colors={['rgba(180, 185, 255, 0.03)', 'transparent', 'transparent']}
         style={StyleSheet.absoluteFill}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -299,8 +200,8 @@ export default function PostDownloaderScreen({ navigation, route }) {
         </View>
       </View>
 
-      <ScrollView 
-        showsVerticalScrollIndicator={false} 
+      <ScrollView
+        showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 150 }}
         keyboardShouldPersistTaps="handled"
       >
@@ -310,7 +211,7 @@ export default function PostDownloaderScreen({ navigation, route }) {
             Download <Text style={{ fontStyle: 'italic', fontWeight: '400', color: COLORS.primary }}>Posts.</Text>
           </Text>
           <Text style={styles.heroSub}>
-            Vault your favorite Instagram photo posts in high-definition. Simply paste any Instagram link below to begin the extraction.
+            Vault your favorite Instagram photo posts in high-definition. Supports single images & carousel posts with multiple photos.
           </Text>
         </View>
 
@@ -323,7 +224,10 @@ export default function PostDownloaderScreen({ navigation, route }) {
               setUrl(text);
               setError(null);
             }}
-            onClear={() => setUrl('')}
+            onClear={() => {
+              setUrl('');
+              setImages([]);
+            }}
             icon={LinkIcon}
             suffix={() => (
               <TouchableOpacity style={styles.inlinePasteBtn} onPress={handlePaste}>
@@ -331,16 +235,16 @@ export default function PostDownloaderScreen({ navigation, route }) {
               </TouchableOpacity>
             )}
           />
-          
-          <TouchableOpacity 
-            style={[styles.fetchBtn, loading && { opacity: 0.7 }]} 
+
+          <TouchableOpacity
+            style={[styles.fetchBtn, loading && { opacity: 0.7 }]}
             onPress={handleFetch}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#000" size="small" />
             ) : (
-              <Text style={styles.fetchBtnText}>EXTRACT MEDIA</Text>
+              <Text style={styles.fetchBtnText}>EXTRACT PHOTOS</Text>
             )}
           </TouchableOpacity>
 
@@ -361,25 +265,91 @@ export default function PostDownloaderScreen({ navigation, route }) {
           )}
         </View>
 
+        {/* Results Grid */}
+        {images.length > 0 && (
+          <View style={styles.resultsSection}>
+            <View style={styles.resultsHeader}>
+              <View style={styles.resultsCountBadge}>
+                <ImageIcon color={COLORS.primary} size={16} />
+                <Text style={styles.resultsCountText}>{images.length} Photo{images.length > 1 ? 's' : ''} Found</Text>
+              </View>
+              {images.length > 1 && (
+                <TouchableOpacity
+                  style={[styles.downloadAllBtn, downloading && { opacity: 0.5 }]}
+                  onPress={handleDownloadAll}
+                  disabled={downloading}
+                >
+                  <Download color="#000" size={16} style={{ marginRight: 6 }} />
+                  <Text style={styles.downloadAllText}>Save All</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
+            {downloading && (
+              <View style={{ marginBottom: 16 }}>
+                <ProgressBar progress={downloadProgress} label="Downloading Photos" />
+              </View>
+            )}
 
-        {/* Preview & Metadata */}
-        {reelData && (
-          <PreviewCard 
-            reelData={reelData}
-            downloading={downloading}
-            downloadProgress={downloadProgress}
-            handleDownload={handleDownload}
-            handleShare={handleShare}
-            isFocused={isFocused}
-          />
+            <View style={styles.imageGrid}>
+              {images.map((img, i) => renderImageCard(img, i))}
+            </View>
+          </View>
         )}
-
       </ScrollView>
+
+      {/* Full-screen Image Preview Modal */}
+      <Modal
+        visible={!!selectedImage}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => !downloading && setSelectedImage(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <LinearGradient colors={['rgba(0,0,0,0.9)', 'transparent']} style={styles.modalTopNav}>
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={() => !downloading && setSelectedImage(null)}
+              disabled={downloading}
+            >
+              <X color="#FFF" size={24} />
+            </TouchableOpacity>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16, letterSpacing: 1 }}>POST</Text>
+              <Text style={{ color: COLORS.primary, fontSize: 10, fontWeight: 'bold', letterSpacing: 2, marginTop: 2 }}>PREVIEW</Text>
+            </View>
+            <View style={{ width: 44 }} />
+          </LinearGradient>
+
+          <View style={styles.playerContainer}>
+            <Image
+              source={{ uri: selectedImage }}
+              style={styles.fullScreenImage}
+              resizeMode="contain"
+            />
+          </View>
+
+          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.95)']} style={styles.modalBottomControls}>
+            <TouchableOpacity
+              style={[styles.modalDownloadBtn, downloading && { opacity: 0.7, backgroundColor: COLORS.textSecondary }]}
+              onPress={() => handleDownloadImage(selectedImage, 0)}
+              disabled={downloading}
+            >
+              {downloading ? (
+                <ActivityIndicator color="#000" size="small" style={{ marginRight: 10 }} />
+              ) : (
+                <Download color="#000" size={24} style={{ marginRight: 10 }} />
+              )}
+              <Text style={styles.modalDownloadText}>
+                {downloading ? `SAVING ${Math.round(downloadProgress * 100)}%` : 'SAVE TO VAULT'}
+              </Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {
@@ -416,51 +386,13 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     opacity: 0.8,
   },
-  switchModeBtn: {
-    marginTop: 15,
-    alignSelf: 'flex-start',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 20,
-  },
-  switchModeText: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontWeight: 'bold',
-  },
   extractionCard: {
     backgroundColor: 'rgba(0, 0, 0, 0.88)',
     borderRadius: 32,
     padding: 24,
     borderWidth: 1,
     borderColor: COLORS.glassBorder,
-    marginBottom: 40,
-  },
-  inputBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#000',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    height: 60,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 1)',
-  },
-  input: {
-    flex: 1,
-    color: COLORS.text,
-    fontSize: 14,
-    marginHorizontal: 12,
-    height: '100%',
-  },
-  pasteBubbleBtn: {
-    backgroundColor: 'rgba(55, 51, 51, 0.83)',
-    height: 36,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginBottom: 30,
   },
   inlinePasteBtn: {
     backgroundColor: 'rgba(255, 255, 255, 0.26)',
@@ -490,126 +422,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '900',
   },
-  previewContainer: {
-    marginTop: 10,
-    marginBottom: 40,
-  },
-  previewFrame: {
-    width: '100%',
-    aspectRatio: 4 / 5,
-    borderRadius: 32,
-    overflow: 'hidden',
-    backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    ...SHADOWS.glass,
-  },
-  videoPlayer: {
-    width: '100%',
-    height: '100%',
-  },
-  metaCard: {
-    padding: 24,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    marginBottom: 24,
-  },
-  metaHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  metaIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(180, 185, 255, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  metaTitle: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  metaSubtitle: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    marginTop: 4,
-  },
-  actionGrid: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  downloadActionBtn: {
-    backgroundColor: COLORS.primary,
-    height: 56,
-    borderRadius: 18,
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  downloadActionText: {
-    color: '#000',
-    fontSize: 14,
-    fontWeight: '900',
-    marginLeft: 8,
-    letterSpacing: 1,
-  },
-  shareActionBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  creatorBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    padding: 20,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-  },
-  creatorAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-  },
-  creatorInfo: {
-    marginLeft: 16,
-  },
-  creatorNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  creatorName: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  creatorDetail: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    marginTop: 2,
-  },
-  emptyHistoryText: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
-  },
   errorBubble: {
     backgroundColor: 'rgba(255,107,107,0.05)',
     borderRadius: 20,
@@ -635,5 +447,169 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
-
+  resultsSection: {
+    marginBottom: 20,
+  },
+  resultsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  resultsCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(180, 185, 255, 0.08)',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(180, 185, 255, 0.15)',
+  },
+  resultsCountText: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  downloadAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    ...SHADOWS.primary,
+  },
+  downloadAllText: {
+    color: '#000',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  imageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  imageCard: {
+    width: (width - SPACING.lg * 2 - 12) / 2,
+    marginBottom: 16,
+  },
+  imageCardInner: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+  },
+  imageThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  imageOverlay: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  imageIndex: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  imageSaveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    paddingVertical: 10,
+    borderRadius: 14,
+    marginTop: 8,
+    ...SHADOWS.primary,
+  },
+  imageSaveBtnText: {
+    color: '#000',
+    fontSize: 13,
+    fontWeight: '800',
+    marginLeft: 6,
+  },
+  // Modal styles
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playerContainer: {
+    width: width * 0.9,
+    height: height * 0.65,
+    borderRadius: 32,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  fullScreenImage: {
+    width: '100%',
+    height: '100%',
+  },
+  modalTopNav: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 50,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    zIndex: 100,
+  },
+  modalBottomControls: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingBottom: 50,
+    paddingTop: 80,
+    paddingHorizontal: 20,
+    zIndex: 100,
+    flexDirection: 'column',
+  },
+  modalCloseBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  modalDownloadBtn: {
+    width: '100%',
+    height: 60,
+    backgroundColor: COLORS.primary,
+    borderRadius: 20,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...SHADOWS.primary,
+  },
+  modalDownloadText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
 });

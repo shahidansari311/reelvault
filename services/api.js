@@ -46,7 +46,7 @@ export const fetchReelData = async (reelUrl) => {
   if (cached) return cached;
 
   try {
-    const response = await api.post('/download', { reelUrl });
+    const response = await api.post('/download/reel', { reelUrl });
     const data = {
       ...response.data,
       videoUrl: getProxyUrl(response.data.videoUrl)
@@ -65,6 +65,37 @@ export const fetchReelData = async (reelUrl) => {
        status === 504 ? 'The request took too long. Please try again.' :
        !error.response ? 'Could not connect to the server. Please check your internet connection.' :
        'Something went wrong while getting this Reel. Please try again.')
+    );
+    err.response = error.response;
+    throw err;
+  }
+};
+
+export const fetchPostData = async (postUrl) => {
+  const cacheKey = `post_${postUrl}`;
+  const cached = await getCache(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const response = await api.post('/download/post', { reelUrl: postUrl });
+    const data = {
+      ...response.data,
+      images: (response.data.images || []).map(url => getProxyUrl(url)),
+    };
+    await setCache(cacheKey, data);
+    return data;
+  } catch (error) {
+    console.error('Error fetching post:', error);
+    const serverError = error.response?.data;
+    const status = error.response?.status;
+    const err = new Error(
+      serverError?.message ||
+      (status === 403 ? 'This post belongs to a private account. We can only download from public accounts.' :
+       status === 404 ? 'This post was not found. It may have been deleted or the link is wrong.' :
+       status === 429 ? 'Instagram is limiting our access right now. Please wait a minute and try again.' :
+       status === 504 ? 'The request took too long. Please try again.' :
+       !error.response ? 'Could not connect to the server. Please check your internet connection.' :
+       'Something went wrong while getting this post. Please try again.')
     );
     err.response = error.response;
     throw err;
