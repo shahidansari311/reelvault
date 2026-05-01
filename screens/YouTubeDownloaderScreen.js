@@ -26,7 +26,7 @@ import { ProgressBar } from '../components/ProgressBar';
 import { downloadFile } from '../utils/download';
 import { fetchYouTubeInfo, requestYouTubeDownload } from '../services/api';
 
-export default function YouTubeDownloaderScreen({ navigation }) {
+export default function YouTubeDownloaderScreen({ navigation, route }) {
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [ytLoading, setYtLoading] = useState(false);
   const [ytDownloading, setYtDownloading] = useState(false);
@@ -37,6 +37,17 @@ export default function YouTubeDownloaderScreen({ navigation }) {
   const [showFormatModal, setShowFormatModal] = useState(false);
 
   const validateYouTubeUrl = (u) => /(youtube\.com|youtu\.be)\//i.test((u || '').trim());
+
+  React.useEffect(() => {
+    if (route?.params?.initialUrl) {
+      setYoutubeUrl(route.params.initialUrl);
+      setTimeout(() => {
+        if (route.params.initialUrl) {
+          handleFetchUrl(route.params.initialUrl);
+        }
+      }, 500);
+    }
+  }, [route?.params?.initialUrl]);
 
   const handlePaste = async () => {
     const text = await Clipboard.getStringAsync();
@@ -49,7 +60,11 @@ export default function YouTubeDownloaderScreen({ navigation }) {
   };
 
   const handleFetch = async () => {
-    if (!validateYouTubeUrl(youtubeUrl)) {
+    handleFetchUrl(youtubeUrl);
+  };
+
+  const handleFetchUrl = async (urlToFetch) => {
+    if (!validateYouTubeUrl(urlToFetch)) {
       Alert.alert('Wrong Link', 'That doesn\'t look like a YouTube link. Please paste a link from youtube.com or youtu.be.');
       return;
     }
@@ -59,7 +74,7 @@ export default function YouTubeDownloaderScreen({ navigation }) {
     setYtInfo(null);
 
     try {
-      const data = await fetchYouTubeInfo(youtubeUrl.trim());
+      const data = await fetchYouTubeInfo(urlToFetch.trim());
       setYtInfo(data);
     } catch (err) {
       const serverData = err.response?.data;

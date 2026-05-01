@@ -113,6 +113,7 @@ export default function AboutScreen({ navigation }) {
   }, []);
 
   const socialLinks = [
+    { icon: Link, label: 'Instagram', sublabel: '@_shahid_129_', url: 'https://instagram.com/_shahid_129_', color: '#E1306C' },
     { icon: Link, label: 'LinkedIn', sublabel: 'Shahid Ansari', url: 'https://www.linkedin.com/in/shahid-ansari-433449327/', color: '#0A66C2' },
     { icon: Code, label: 'GitHub', sublabel: 'shahidansari311', url: 'https://github.com/shahidansari311', color: '#E6EDF3' },
     { icon: Globe, label: 'Portfolio', sublabel: 'View My Work', url: 'https://shahidansari.vercel.app/', color: '#8B5CF6' },

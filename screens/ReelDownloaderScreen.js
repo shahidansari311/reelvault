@@ -129,18 +129,55 @@ export default function ReelDownloaderScreen({ navigation, route }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (route.params?.autoPaste) {
+    if (route.params?.initialUrl) {
+      setUrl(route.params.initialUrl);
+      // Let the state update first, then fetch
+      setTimeout(() => {
+        if (route.params.initialUrl) {
+          handleFetchUrl(route.params.initialUrl);
+        }
+      }, 500);
+    } else if (route.params?.autoPaste) {
       handlePaste();
     } else {
       checkClipboard();
     }
     loadHistory();
-  }, [route.params?.autoPaste]);
+  }, [route.params?.autoPaste, route.params?.initialUrl]);
 
   const handlePaste = async () => {
     const text = await Clipboard.getStringAsync();
     if (text.includes('instagram.com/')) {
       setUrl(text);
+    }
+  };
+
+  const handleFetchUrl = async (urlToFetch) => {
+    if (!urlToFetch) return;
+    Keyboard.dismiss();
+    setLoading(true);
+    setFetchProgress(0);
+    setReelData(null);
+    setError(null);
+
+    // Simulated progress for extraction (smooth 2% increments)
+    const interval = setInterval(() => {
+      setFetchProgress(prev => {
+        if (prev >= 0.9) return prev;
+        return prev + 0.02;
+      });
+    }, 200);
+
+    try {
+      const data = await fetchReelData(urlToFetch);
+      clearInterval(interval);
+      setFetchProgress(1);
+      setReelData(data);
+      saveToHistory({ ...data, date: new Date().toISOString(), originalUrl: urlToFetch });
+      setLoading(false);
+    } catch (err) {
+      clearInterval(interval);
+      handleFetchError(err);
     }
   };
 
@@ -177,56 +214,35 @@ export default function ReelDownloaderScreen({ navigation, route }) {
   };
 
   const handleFetch = async () => {
-    if (!url) return;
-    Keyboard.dismiss();
-    setLoading(true);
-    setFetchProgress(0);
-    setReelData(null);
-    setError(null);
+    handleFetchUrl(url);
+  };
 
-    // Simulated progress for extraction (smooth 2% increments)
-    const interval = setInterval(() => {
-      setFetchProgress(prev => {
-        if (prev >= 0.9) return prev;
-        return prev + 0.02;
-      });
-    }, 200);
+  const handleFetchError = (err) => {
+    const serverData = err.response?.data;
+    const status = err.response?.status;
 
-    try {
-      const data = await fetchReelData(url);
-      clearInterval(interval);
-      setFetchProgress(1);
-      setReelData(data);
-      saveToHistory({ ...data, date: new Date().toISOString(), originalUrl: url });
-      setLoading(false);
-    } catch (err) {
-      clearInterval(interval);
-      const serverData = err.response?.data;
-      const status = err.response?.status;
+    let errorTitle = serverData?.error || 'Something Went Wrong';
+    let errorMsg = serverData?.message || err.message || 'We couldn\'t get this video. Please check the link and try again.';
 
-      let errorTitle = serverData?.error || 'Something Went Wrong';
-      let errorMsg = serverData?.message || err.message || 'We couldn\'t get this video. Please check the link and try again.';
-
-      if (status === 403) {
-        errorTitle = serverData?.error || 'This Account is Private';
-        errorMsg = serverData?.message || 'This Reel belongs to a private account. We can only download from public accounts.';
-      } else if (status === 404) {
-        errorTitle = serverData?.error || 'Reel Not Found';
-        errorMsg = serverData?.message || 'This Reel was not found. It may have been deleted or the link is wrong.';
-      } else if (status === 429) {
-        errorTitle = serverData?.error || 'Too Many Requests';
-        errorMsg = serverData?.message || 'Instagram is limiting our access right now. Please wait a minute and try again.';
-      } else if (status === 504) {
-        errorTitle = serverData?.error || 'Taking Too Long';
-        errorMsg = serverData?.message || 'The request took too long. Please try again.';
-      } else if (!err.response) {
-        errorTitle = 'No Internet';
-        errorMsg = 'Could not connect to the server. Please check your internet connection.';
-      }
-
-      setError({ title: errorTitle, message: errorMsg });
-      setLoading(false);
+    if (status === 403) {
+      errorTitle = serverData?.error || 'This Account is Private';
+      errorMsg = serverData?.message || 'This Reel belongs to a private account. We can only download from public accounts.';
+    } else if (status === 404) {
+      errorTitle = serverData?.error || 'Reel Not Found';
+      errorMsg = serverData?.message || 'This Reel was not found. It may have been deleted or the link is wrong.';
+    } else if (status === 429) {
+      errorTitle = serverData?.error || 'Too Many Requests';
+      errorMsg = serverData?.message || 'Instagram is limiting our access right now. Please wait a minute and try again.';
+    } else if (status === 504) {
+      errorTitle = serverData?.error || 'Taking Too Long';
+      errorMsg = serverData?.message || 'The request took too long. Please try again.';
+    } else if (!err.response) {
+      errorTitle = 'No Internet';
+      errorMsg = 'Could not connect to the server. Please check your internet connection.';
     }
+
+    setError({ title: errorTitle, message: errorMsg });
+    setLoading(false);
   };
 
 

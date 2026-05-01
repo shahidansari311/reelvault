@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 
-import { NavigationContainer, DarkTheme } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme, useNavigationContainerRef } from '@react-navigation/native';
 
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, StyleSheet } from 'react-native';
@@ -31,6 +31,7 @@ const MyDarkTheme = {
 
 import * as MediaLibrary from 'expo-media-library';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Linking from 'expo-linking';
 
 export default function App() {
   useEffect(() => {
@@ -59,8 +60,28 @@ export default function App() {
     return () => clearInterval(keepAlive);
   }, []);
 
+  const navigationRef = useNavigationContainerRef();
+
+  useEffect(() => {
+    const handleUrl = (urlStr) => {
+      if (!urlStr) return;
+      if (urlStr.includes('instagram.com') || urlStr.includes('instagr.am')) {
+        setTimeout(() => navigationRef.navigate('Reels', { autoPaste: true, initialUrl: urlStr }), 500);
+      } else if (urlStr.includes('youtube.com') || urlStr.includes('youtu.be')) {
+        setTimeout(() => navigationRef.navigate('YouTube', { autoPaste: true, initialUrl: urlStr }), 500);
+      }
+    };
+
+    Linking.getInitialURL().then((url) => handleUrl(url));
+    const subscription = Linking.addEventListener('url', (event) => handleUrl(event.url));
+    
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   return (
-    <NavigationContainer theme={MyDarkTheme}>
+    <NavigationContainer ref={navigationRef} theme={MyDarkTheme}>
       <StatusBar style="light" />
       <Tab.Navigator
         detachInactiveScreens

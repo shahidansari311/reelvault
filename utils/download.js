@@ -2,7 +2,9 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
 import * as MediaLibrary from 'expo-media-library';
-import { Alert, Linking } from 'react-native';
+import { Alert, Linking, NativeModules, Platform } from 'react-native';
+
+const { NativeDownload } = NativeModules;
 
 export const downloadFile = async (url, fileName, onProgress, meta = null) => {
   try {
@@ -30,6 +32,32 @@ export const downloadFile = async (url, fileName, onProgress, meta = null) => {
         ]
       );
       return false;
+    }
+
+    // Use Native Background Downloader if available on Android
+    if (Platform.OS === 'android' && NativeDownload) {
+      const title = meta?.title || fileName;
+      NativeDownload.startDownload(url, fileName, title);
+      
+      // Simulate completion for history saving
+      if (onProgress) onProgress(1);
+
+      // Save to History (SQLite)
+      if (meta) {
+        const { saveDownload } = require('../services/db');
+        await saveDownload({
+          id: Date.now().toString(),
+          title: meta.title || 'Unknown Title',
+          url: meta.url || url,
+          platform: meta.platform || 'unknown',
+          format: meta.format || null,
+          filesize_mb: 0, // Not available synchronously with DownloadManager
+          filepath: `file:///storage/emulated/0/Pictures/SaveX/${fileName}`,
+          thumbnail: meta.thumbnail || null,
+          duration: meta.duration || 0,
+        });
+      }
+      return true;
     }
 
     // 2. Define local URI
@@ -80,10 +108,10 @@ export const downloadFile = async (url, fileName, onProgress, meta = null) => {
     // 5. Save to Media Library (Gallery)
     const asset = await MediaLibrary.createAssetAsync(result.uri);
     try {
-      // Explicitly using the album name 'Download'
-      await MediaLibrary.createAlbumAsync('Download', asset, false);
+      // Save media using MediaStore into: Pictures/SaveX
+      await MediaLibrary.createAlbumAsync('SaveX', asset, false);
     } catch (albumErr) {
-      console.warn('Could not move to Download album, but file is saved to default gallery.');
+      console.warn('Could not move to SaveX album, but file is saved to default gallery.');
     }
     
     // 6. Save to History (SQLite)
