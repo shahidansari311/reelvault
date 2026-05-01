@@ -35,15 +35,18 @@ import * as Linking from 'expo-linking';
 
 export default function App() {
   useEffect(() => {
-    // Request MediaLibrary permissions once permanently
+    // Request MediaLibrary permissions once permanently (Modern Android 13+ support)
     const requestPermissions = async () => {
-      const { status } = await MediaLibrary.getPermissionsAsync(true);
-      if (status !== 'granted') {
+      try {
         const hasAsked = await AsyncStorage.getItem('hasAskedMediaPerm');
         if (!hasAsked) {
-          await MediaLibrary.requestPermissionsAsync(true);
-          await AsyncStorage.setItem('hasAskedMediaPerm', 'true');
+          const { status } = await MediaLibrary.requestPermissionsAsync(true);
+          if (status === 'granted') {
+            await AsyncStorage.setItem('hasAskedMediaPerm', 'true');
+          }
         }
+      } catch (err) {
+        console.log('Permission request error:', err);
       }
     };
     requestPermissions();
@@ -51,9 +54,8 @@ export default function App() {
     const keepAlive = setInterval(async () => {
       try {
         await api.get('/'); 
-        console.log('Keep-alive ping sent');
       } catch (e) {
-        console.log('Keep-alive ping completed');
+        // Silently fail
       }
     }, 5 * 60 * 1000); 
 
@@ -62,22 +64,48 @@ export default function App() {
 
   const navigationRef = useNavigationContainerRef();
 
+  // Extract YouTube Video ID using Regex
+  const extractYoutubeId = (url) => {
+    const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?\/\s]{11})/i;
+    const match = url.match(regex);
+    return match ? match[1] : null;
+  };
+
   useEffect(() => {
-    const handleUrl = (urlStr) => {
-      if (!urlStr) return;
-      if (urlStr.includes('instagram.com') || urlStr.includes('instagr.am')) {
-        setTimeout(() => navigationRef.navigate('Reels', { autoPaste: true, initialUrl: urlStr }), 500);
-      } else if (urlStr.includes('youtube.com') || urlStr.includes('youtu.be')) {
-        setTimeout(() => navigationRef.navigate('YouTube', { autoPaste: true, initialUrl: urlStr }), 500);
+    const handleIncomingURL = (url) => {
+      if (!url) return;
+
+      if (url.includes('instagram.com') || url.includes('instagr.am')) {
+        // auto-fill input OR trigger download
+        setTimeout(() => {
+          if (navigationRef.isReady()) {
+            navigationRef.navigate('Reels', { autoPaste: true, initialUrl: url });
+          }
+        }, 800);
+      } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        const videoId = extractYoutubeId(url);
+        // handle YouTube links
+        setTimeout(() => {
+          if (navigationRef.isReady()) {
+            navigationRef.navigate('YouTube', { 
+              autoPaste: true, 
+              initialUrl: url,
+              videoId: videoId 
+            });
+          }
+        }, 800);
       }
     };
 
-    Linking.getInitialURL().then((url) => handleUrl(url));
-    const subscription = Linking.addEventListener('url', (event) => handleUrl(event.url));
+    Linking.getInitialURL().then(url => {
+      if (url) handleIncomingURL(url);
+    });
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleIncomingURL(url);
+    });
     
-    return () => {
-      subscription.remove();
-    };
+    return () => subscription.remove();
   }, []);
 
   return (

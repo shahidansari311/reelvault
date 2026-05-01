@@ -25,7 +25,7 @@ import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 
 const { width } = Dimensions.get('window');
 
-const AnimatedCard = ({ children, onPress, fadeAnim }) => {
+const AnimatedCard = React.memo(({ children, onPress, fadeAnim }) => {
   const scale = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -68,7 +68,7 @@ const AnimatedCard = ({ children, onPress, fadeAnim }) => {
       </TouchableOpacity>
     </Animated.View>
   );
-};
+});
 
 export default function HomeScreen({ navigation }) {
   const fadeAnims = [
@@ -88,6 +88,10 @@ export default function HomeScreen({ navigation }) {
       Animated.timing(fadeAnims[3], { toValue: 1, duration: 500, useNativeDriver: true }),
     ]).start();
   }, []);
+
+  const navigateTo = React.useCallback((screen) => {
+    navigation.navigate(screen);
+  }, [navigation]);
 
   return (
     <LinearGradient 
@@ -121,7 +125,7 @@ export default function HomeScreen({ navigation }) {
         </Animated.View>
 
         {/* Action 01: Instagram Reels */}
-        <AnimatedCard fadeAnim={fadeAnims[0]} onPress={() => navigation.navigate('Reels')}>
+        <AnimatedCard fadeAnim={fadeAnims[0]} onPress={() => navigateTo('Reels')}>
           <View style={styles.actionInfo}>
             <View>
               <Text style={styles.actionTitle}>IG Reels</Text>
@@ -138,7 +142,7 @@ export default function HomeScreen({ navigation }) {
         </AnimatedCard>
 
         {/* Action 02: Instagram Stories */}
-        <AnimatedCard fadeAnim={fadeAnims[2]} onPress={() => navigation.navigate('Stories')}>
+        <AnimatedCard fadeAnim={fadeAnims[2]} onPress={() => navigateTo('Stories')}>
           <View style={styles.actionInfo}>
             <View>
               <Text style={styles.actionTitle}>IG Stories</Text>
@@ -155,7 +159,7 @@ export default function HomeScreen({ navigation }) {
         </AnimatedCard>
 
         {/* Action 04: YouTube */}
-        <AnimatedCard fadeAnim={fadeAnims[3]} onPress={() => navigation.navigate('YouTube')}>
+        <AnimatedCard fadeAnim={fadeAnims[3]} onPress={() => navigateTo('YouTube')}>
           <View style={styles.actionInfo}>
             <View>
               <Text style={styles.actionTitle}>YouTube Media</Text>
@@ -175,7 +179,7 @@ export default function HomeScreen({ navigation }) {
         <Animated.View style={{ opacity: fadeAnims[4], transform: [{ translateY: fadeAnims[4].interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }}>
           <TouchableOpacity
             style={styles.aboutBtn}
-            onPress={() => navigation.navigate('About')}
+            onPress={() => navigateTo('About')}
             activeOpacity={0.8}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>

@@ -36,15 +36,17 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
   const [audioBitrate, setAudioBitrate] = useState('192');
   const [showFormatModal, setShowFormatModal] = useState(false);
 
-  const validateYouTubeUrl = (u) => /(youtube\.com|youtu\.be)\//i.test((u || '').trim());
+  const validateYouTubeUrl = (u) => {
+    const url = (u || '').trim();
+    return /(youtube\.com|youtu\.be|youtube\.com\/shorts)\//i.test(url);
+  };
 
   React.useEffect(() => {
     if (route?.params?.initialUrl) {
       setYoutubeUrl(route.params.initialUrl);
+      const urlToFetch = route.params.initialUrl;
       setTimeout(() => {
-        if (route.params.initialUrl) {
-          handleFetchUrl(route.params.initialUrl);
-        }
+        handleFetchUrl(urlToFetch);
       }, 500);
     }
   }, [route?.params?.initialUrl]);
