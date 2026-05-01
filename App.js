@@ -30,14 +30,19 @@ const MyDarkTheme = {
 };
 
 import * as MediaLibrary from 'expo-media-library';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function App() {
   useEffect(() => {
-    // Request MediaLibrary permissions once on startup
+    // Request MediaLibrary permissions once permanently
     const requestPermissions = async () => {
-      const { status } = await MediaLibrary.getPermissionsAsync();
+      const { status } = await MediaLibrary.getPermissionsAsync(true);
       if (status !== 'granted') {
-        await MediaLibrary.requestPermissionsAsync();
+        const hasAsked = await AsyncStorage.getItem('hasAskedMediaPerm');
+        if (!hasAsked) {
+          await MediaLibrary.requestPermissionsAsync(true);
+          await AsyncStorage.setItem('hasAskedMediaPerm', 'true');
+        }
       }
     };
     requestPermissions();

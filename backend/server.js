@@ -369,7 +369,7 @@ const getCommonArgs = () => {
     '--no-check-certificates',
     '--geo-bypass',
     '--retries', '3',
-    '--extractor-args', 'youtube:player_client=android,web'
+    '--no-check-certificates'
   ];
   
   // Automatically try to use node for javascript runtimes if available (fixes n-sig challenges)
@@ -490,6 +490,7 @@ app.post('/youtube/info', async (req, res) => {
     const { stdout } = await runYtDlp([
       '--dump-json',
       '--no-playlist',
+      '--extractor-args', 'youtube:player_client=android,web',
       ...getCommonArgs(),
       cleanUrl
     ], { timeoutMs: 180000 });

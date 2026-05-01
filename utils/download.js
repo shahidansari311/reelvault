@@ -6,11 +6,18 @@ import { Alert, Linking } from 'react-native';
 
 export const downloadFile = async (url, fileName, onProgress, meta = null) => {
   try {
-    // 1. Check Permissions
-    let { status } = await MediaLibrary.getPermissionsAsync();
+    // 1. Check Permissions (Write-only avoids the AUDIO permission error)
+    let { status } = await MediaLibrary.getPermissionsAsync(true);
     if (status !== 'granted') {
-      const response = await MediaLibrary.requestPermissionsAsync();
-      status = response.status;
+      const { AsyncStorage } = require('react-native');
+      const Storage = require('@react-native-async-storage/async-storage').default;
+      const hasAsked = await Storage.getItem('hasAskedMediaPerm');
+      
+      if (!hasAsked) {
+        const response = await MediaLibrary.requestPermissionsAsync(true);
+        status = response.status;
+        await Storage.setItem('hasAskedMediaPerm', 'true');
+      }
     }
 
     if (status !== 'granted') {
