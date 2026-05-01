@@ -369,7 +369,7 @@ const getCommonArgs = () => {
     '--no-check-certificates',
     '--geo-bypass',
     '--retries', '3',
-    '--no-check-certificates'
+    '--extractor-args', 'youtube:player_client=android,web'
   ];
   
   // Automatically try to use node for javascript runtimes if available (fixes n-sig challenges)

@@ -4,7 +4,7 @@
     "slug": "reelvault",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/logo.jpeg",
+    "icon": "./assets/logo.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {

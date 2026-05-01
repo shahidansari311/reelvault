@@ -29,8 +29,19 @@ const MyDarkTheme = {
   },
 };
 
+import * as MediaLibrary from 'expo-media-library';
+
 export default function App() {
   useEffect(() => {
+    // Request MediaLibrary permissions once on startup
+    const requestPermissions = async () => {
+      const { status } = await MediaLibrary.getPermissionsAsync(true);
+      if (status !== 'granted') {
+        await MediaLibrary.requestPermissionsAsync(true);
+      }
+    };
+    requestPermissions();
+
     const keepAlive = setInterval(async () => {
       try {
         await api.get('/'); 
@@ -42,7 +53,6 @@ export default function App() {
 
     return () => clearInterval(keepAlive);
   }, []);
-
 
   return (
     <NavigationContainer theme={MyDarkTheme}>

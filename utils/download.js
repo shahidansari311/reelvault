@@ -6,8 +6,12 @@ import { Alert, Linking } from 'react-native';
 
 export const downloadFile = async (url, fileName, onProgress, meta = null) => {
   try {
-    // 1. Request/Check Permissions (Write-only avoids the AUDIO permission error)
-    const { status } = await MediaLibrary.requestPermissionsAsync(true);
+    // 1. Check Permissions (Write-only avoids the AUDIO permission error)
+    let { status } = await MediaLibrary.getPermissionsAsync(true);
+    if (status !== 'granted') {
+      const response = await MediaLibrary.requestPermissionsAsync(true);
+      status = response.status;
+    }
 
     if (status !== 'granted') {
       Alert.alert(
@@ -69,10 +73,10 @@ export const downloadFile = async (url, fileName, onProgress, meta = null) => {
     // 5. Save to Media Library (Gallery)
     const asset = await MediaLibrary.createAssetAsync(result.uri);
     try {
-      // Explicitly using the album name 'SaveX'
-      await MediaLibrary.createAlbumAsync('SaveX', asset, false);
+      // Explicitly using the album name 'Download'
+      await MediaLibrary.createAlbumAsync('Download', asset, false);
     } catch (albumErr) {
-      console.warn('Could not move to SaveX album (likely Android 13 permission restriction), but file is saved to default gallery.');
+      console.warn('Could not move to Download album, but file is saved to default gallery.');
     }
     
     // 6. Save to History (SQLite)
