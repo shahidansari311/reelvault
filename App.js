@@ -35,9 +35,9 @@ export default function App() {
   useEffect(() => {
     // Request MediaLibrary permissions once on startup
     const requestPermissions = async () => {
-      const { status } = await MediaLibrary.getPermissionsAsync(true);
+      const { status } = await MediaLibrary.getPermissionsAsync();
       if (status !== 'granted') {
-        await MediaLibrary.requestPermissionsAsync(true);
+        await MediaLibrary.requestPermissionsAsync();
       }
     };
     requestPermissions();
