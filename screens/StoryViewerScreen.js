@@ -631,7 +631,7 @@ export default function StoryViewerScreen({ navigation, route }) {
               <VideoPlayer
                 key={selectedStory.url}
                 uri={selectedStory.url}
-                title={`Story by ${username}`}
+                title={detectedUsername || (username.includes('http') ? 'Instagram Story' : `Story by @${username}`)}
                 shouldPlay={isFocused && !!selectedStory && !downloading}
                 isLooping
                 aspectRatio={undefined}
