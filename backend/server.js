@@ -99,11 +99,51 @@ function saveFeedbackData(data) {
 
 const nodemailer = require('nodemailer');
 
+// ─── Email Transporter (created once, verified on startup) ─────────
+let emailTransporter = null;
+if (process.env.GMAIL_USER && process.env.GMAIL_PASS) {
+  emailTransporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_PASS,
+    },
+    // Pool connections for reliability
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 50,
+  });
+
+  // Verify credentials on startup — this catches bad App Passwords immediately
+  emailTransporter.verify()
+    .then(() => console.log('✅ Email transporter ready (Gmail authenticated)'))
+    .catch((err) => {
+      console.error('❌ Email transporter FAILED to verify:', err.message);
+      console.error('   → Check GMAIL_USER and GMAIL_PASS in .env');
+      console.error('   → If using Gmail, you MUST use an App Password (not your real password)');
+      console.error('   → Generate one at: https://myaccount.google.com/apppasswords');
+      emailTransporter = null; // Disable email so the route doesn't hang
+    });
+} else {
+  console.warn('⚠️  Email notifications disabled: GMAIL_USER or GMAIL_PASS not set in .env');
+}
+
+// Simple HTML escaping to prevent XSS in email body
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Submit Feedback
 app.post('/feedback', async (req, res) => {
   const { name, email, message, rating, timestamp } = req.body || {};
   if (!message || !message.trim()) {
-    return res.status(400).json({ error: 'Missing feedback message.' });
+    return res.status(400).json({ success: false, error: 'Missing feedback message.' });
   }
 
   const entry = {
@@ -115,51 +155,91 @@ app.post('/feedback', async (req, res) => {
     timestamp: timestamp || new Date().toISOString(),
   };
 
+  // Always save to JSON file first (never lose feedback even if email fails)
   const feedback = loadFeedback();
   feedback.unshift(entry);
-  saveFeedbackData(feedback.slice(0, 500)); // Keep latest 500
+  saveFeedbackData(feedback.slice(0, 500));
 
   console.log(`📝 New Feedback from ${entry.name}: "${entry.message.slice(0, 50)}..."`);
 
-  // Send Email Notification
-  if (process.env.GMAIL_USER && process.env.GMAIL_PASS) {
+  // Send Email Notification (awaited so we can report failure to user)
+  let emailSent = false;
+  if (emailTransporter) {
+    const safeName = escapeHtml(entry.name);
+    const safeEmail = escapeHtml(entry.email);
+    const safeMessage = escapeHtml(entry.message);
+    const starIcons = '⭐'.repeat(entry.rating) + '☆'.repeat(5 - entry.rating);
+    const recipientEmail = process.env.FEEDBACK_TO || process.env.GMAIL_USER;
+
+    const mailOptions = {
+      from: `"SaveX Feedback" <${process.env.GMAIL_USER}>`,
+      to: recipientEmail,
+      replyTo: entry.email || undefined,
+      subject: `[SaveX] ${entry.rating > 0 ? `${starIcons} ` : ''}Feedback from ${entry.name}`,
+      text: [
+        `New Feedback Received`,
+        ``,
+        `Name: ${entry.name}`,
+        `Email: ${entry.email || 'N/A'}`,
+        `Rating: ${entry.rating}/5`,
+        ``,
+        `Message:`,
+        entry.message,
+        ``,
+        `Time: ${new Date(entry.timestamp).toLocaleString()}`,
+      ].join('\n'),
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; background: #fafafa; border-radius: 16px; overflow: hidden; border: 1px solid #e0e0e0;">
+          <div style="background: linear-gradient(135deg, #B4B9FF 0%, #8B5CF6 100%); padding: 24px 28px;">
+            <h2 style="margin: 0; color: #000; font-size: 20px; font-weight: 800;">📩 New Feedback</h2>
+            <p style="margin: 4px 0 0; color: rgba(0,0,0,0.6); font-size: 13px;">SaveX App Feedback Form</p>
+          </div>
+          <div style="padding: 24px 28px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tr>
+                <td style="padding: 10px 0; color: #666; font-weight: 600; width: 80px; vertical-align: top;">Name</td>
+                <td style="padding: 10px 0; color: #111; font-weight: 500;">${safeName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px 0; color: #666; font-weight: 600; vertical-align: top;">Email</td>
+                <td style="padding: 10px 0; color: #111;">
+                  ${safeEmail ? `<a href="mailto:${safeEmail}" style="color: #8B5CF6; text-decoration: none;">${safeEmail}</a>` : '<span style="color: #999;">Not provided</span>'}
+                </td>
+              </tr>
+              ${entry.rating > 0 ? `
+              <tr>
+                <td style="padding: 10px 0; color: #666; font-weight: 600; vertical-align: top;">Rating</td>
+                <td style="padding: 10px 0; font-size: 18px;">${starIcons} <span style="font-size: 13px; color: #666;">(${entry.rating}/5)</span></td>
+              </tr>
+              ` : ''}
+            </table>
+            <div style="margin-top: 16px; padding: 16px; background: #f0f0f0; border-radius: 12px; border-left: 4px solid #8B5CF6;">
+              <p style="margin: 0 0 6px; color: #666; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">Message</p>
+              <p style="margin: 0; color: #222; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${safeMessage}</p>
+            </div>
+            <p style="margin: 20px 0 0; color: #aaa; font-size: 11px; text-align: center;">
+              ${new Date(entry.timestamp).toLocaleString()} · SaveX v1.3.0
+            </p>
+          </div>
+        </div>
+      `,
+    };
+
     try {
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: process.env.GMAIL_USER,
-          pass: process.env.GMAIL_PASS,
-        },
-      });
-
-      const mailOptions = {
-        from: `"SaveX Feedback" <${process.env.GMAIL_USER}>`,
-        to: process.env.GMAIL_USER, // Send to yourself
-        subject: `New Feedback from ${entry.name} - ${entry.rating}⭐`,
-        text: `New Feedback Received:\n\nName: ${entry.name}\nEmail: ${entry.email || 'N/A'}\nRating: ${entry.rating} Stars\nMessage:\n${entry.message}\n\nTime: ${new Date(entry.timestamp).toLocaleString()}`,
-        html: `
-          <h3>New SaveX Feedback</h3>
-          <p><strong>Name:</strong> ${entry.name}</p>
-          <p><strong>Email:</strong> ${entry.email || 'N/A'}</p>
-          <p><strong>Rating:</strong> ${entry.rating} / 5 ⭐</p>
-          <hr/>
-          <p><strong>Message:</strong></p>
-          <p style="white-space: pre-wrap; background: #f4f4f4; padding: 10px; border-radius: 5px;">${entry.message}</p>
-          <hr/>
-          <p><small>Time: ${new Date(entry.timestamp).toLocaleString()}</small></p>
-        `,
-      };
-
-      // Send email asynchronously without blocking the response
-      transporter.sendMail(mailOptions).catch(err => {
-        console.error('Failed to send feedback email:', err.message);
-      });
+      const info = await emailTransporter.sendMail(mailOptions);
+      console.log('✅ Feedback email sent:', info.messageId);
+      emailSent = true;
     } catch (err) {
-      console.error('Error setting up nodemailer:', err.message);
+      console.error('❌ Failed to send feedback email:', err.message);
+      // Don't fail the whole request — feedback is already saved to JSON
     }
   }
 
-  return res.json({ success: true, message: 'Feedback received!' });
+  return res.json({
+    success: true,
+    message: 'Feedback received!',
+    emailSent,
+  });
 });
 
 // Get Feedback (for developer)

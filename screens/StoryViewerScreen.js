@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 
 import { LinearGradient } from 'expo-linear-gradient';
-import { Video } from 'expo-av';
+import VideoPlayer from '../components/VideoPlayer';
 import { useIsFocused } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import { 
@@ -475,16 +475,13 @@ export default function StoryViewerScreen({ navigation }) {
 
           <View style={styles.playerContainer}>
             {selectedStory?.type === 'video' ? (
-              <Video
-                key={selectedStory.url} // Force fresh play instance
-                source={{ uri: selectedStory.url }}
-                rate={1.0}
-                volume={1.0}
-                isMuted={false}
-                resizeMode="contain"
+              <VideoPlayer
+                key={selectedStory.url}
+                uri={selectedStory.url}
+                title={`Story by ${username}`}
                 shouldPlay={isFocused && !!selectedStory && !downloading}
                 isLooping
-                useNativeControls={!downloading}
+                aspectRatio={undefined}
                 style={styles.fullScreenPlayer}
               />
             ) : (

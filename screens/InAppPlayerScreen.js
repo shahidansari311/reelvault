@@ -1,9 +1,9 @@
 import React, { useRef, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Animated, StatusBar, Image } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
 import { ChevronLeft } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
+import { COLORS, SPACING } from '../constants/Theme';
+import VideoPlayer from '../components/VideoPlayer';
 
 export default function InAppPlayerScreen({ navigation, route }) {
   const { filepath, title } = route.params;
@@ -45,17 +45,18 @@ export default function InAppPlayerScreen({ navigation, route }) {
       <Animated.View style={[styles.playerContainer, { opacity: fadeAnim, transform: [{ scale: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) }] }]}>
         <View style={styles.videoWrapper}>
           {isVideo ? (
-            <Video
-              source={{ uri: filepath }}
-              style={styles.video}
-              useNativeControls
-              resizeMode={ResizeMode.CONTAIN}
+            <VideoPlayer
+              uri={filepath}
+              title={title || 'Media Vault'}
               shouldPlay
+              isLooping={false}
+              aspectRatio={undefined}
+              style={styles.fullPlayer}
             />
           ) : (
             <Image
               source={{ uri: filepath }}
-              style={styles.video}
+              style={styles.fullPlayer}
               resizeMode="contain"
             />
           )}
@@ -119,8 +120,9 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#000',
   },
-  video: {
+  fullPlayer: {
     width: '100%',
     height: '100%',
+    borderRadius: 0,
   },
 });

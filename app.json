@@ -32,23 +32,29 @@
       "usesCleartextTraffic": true,
       "intentFilters": [
         {
-          "action": "VIEW",
+          "action": "SEND",
           "data": [
             {
               "mimeType": "text/plain"
             }
           ],
           "category": [
-            "BROWSABLE",
             "DEFAULT"
           ]
         },
         {
-          "action": "SEND",
+          "action": "VIEW",
           "data": [
-            {
-              "mimeType": "text/plain"
-            }
+            { "scheme": "https", "host": "www.instagram.com" },
+            { "scheme": "https", "host": "instagram.com" },
+            { "scheme": "https", "host": "www.youtube.com" },
+            { "scheme": "https", "host": "youtube.com" },
+            { "scheme": "https", "host": "youtu.be" },
+            { "scheme": "https", "host": "m.youtube.com" }
+          ],
+          "category": [
+            "DEFAULT",
+            "BROWSABLE"
           ]
         }
       ]

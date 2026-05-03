@@ -17,7 +17,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Video, ResizeMode } from 'expo-av';
+import VideoPlayer from '../components/VideoPlayer';
 import { 
   Download, 
   Link2 as LinkIcon, 
@@ -58,17 +58,13 @@ const PreviewCard = ({ reelData, downloading, downloadProgress, handleDownload, 
   return (
     <Animated.View style={[styles.previewContainer, { opacity: fadeAnim, transform: [{ scale: scaleAnim }] }]}>
       <View style={styles.previewFrame}>
-        <Video
+        <VideoPlayer
           key={reelData.videoUrl}
-          source={{ uri: reelData.videoUrl }}
-          rate={1.0}
-          volume={1.0}
-          isMuted={false}
-          resizeMode={ResizeMode.COVER}
+          uri={reelData.videoUrl}
+          title={reelData.title || 'Instagram Reel'}
           shouldPlay={isFocused && !downloading}
           isLooping
-          style={styles.videoPlayer}
-          useNativeControls={!downloading}
+          aspectRatio={4 / 5}
         />
       </View>
 

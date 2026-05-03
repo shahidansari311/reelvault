@@ -97,3 +97,10 @@ To create an APK for your device, use **EAS Build**:
 - Story fetching in the backend is a placeholder. For full functionality, consider integrating `instagram-private-api` with a session cookie or a third-party scraping service.
 - Ensure the backend URL in `services/api.js` excludes the trailing slash.
 
+
+
+
+
+chmod +x scripts/linux-setup.sh
+./scripts/linux-setup.sh
+cd android && ./gradlew assembleRelease

@@ -130,21 +130,32 @@ export default function AboutScreen({ navigation }) {
     setSubmitting(true);
 
     try {
-      await submitFeedback({
+      const result = await submitFeedback({
         name: feedbackName.trim() || 'Anonymous',
         email: feedbackEmail.trim() || '',
         message: feedbackMessage.trim(),
         rating: feedbackRating,
         timestamp: new Date().toISOString(),
       });
+
       setSubmitted(true);
       setFeedbackName('');
       setFeedbackEmail('');
       setFeedbackMessage('');
       setFeedbackRating(0);
-      Alert.alert('Thank You! 🎉', 'Your feedback has been submitted successfully. I really appreciate it!');
+
+      if (result?.emailSent) {
+        Alert.alert('Thank You! 🎉', 'Your feedback has been submitted and emailed successfully!');
+      } else {
+        Alert.alert('Thank You! 🎉', 'Your feedback has been saved. I\'ll see it soon!');
+      }
     } catch (err) {
-      Alert.alert('Oops!', 'Could not submit feedback right now. Please try again later.');
+      const serverMsg = err?.response?.data?.error;
+      if (err?.response) {
+        Alert.alert('Oops!', serverMsg || 'Could not submit feedback right now. Please try again later.');
+      } else {
+        Alert.alert('No Connection', 'Could not reach the server. Please check your internet and try again.');
+      }
     } finally {
       setSubmitting(false);
     }
