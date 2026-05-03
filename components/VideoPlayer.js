@@ -62,6 +62,7 @@ export default function VideoPlayer({
   const [status, setStatus] = useState({});
   const [showControls, setShowControls] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
+  const [videoNaturalSize, setVideoNaturalSize] = useState(null);
   const [isSeeking, setIsSeeking] = useState(false);
   const [seekPosition, setSeekPosition] = useState(0);
   const [sliderWidth, setSliderWidth] = useState(SCREEN_WIDTH - 120);
@@ -80,6 +81,10 @@ export default function VideoPlayer({
   const progress = duration > 0 ? currentTime / duration : 0;
   const isMuted = status.isMuted || false;
   const didFinish = status.didJustFinish || false;
+
+  const isPortrait = videoNaturalSize
+    ? videoNaturalSize.height > videoNaturalSize.width
+    : true; // Default to true (portrait) for social media content
 
   // ─── Controls Visibility ───────────────────────────────────────
   const resetControlsTimer = useCallback(() => {
@@ -245,11 +250,16 @@ export default function VideoPlayer({
             ref={videoRef}
             source={{ uri }}
             style={styles.video}
-            resizeMode={fullscreen ? ResizeMode.CONTAIN : ResizeMode.COVER}
+            resizeMode={fullscreen ? ResizeMode.CONTAIN : (isPortrait ? ResizeMode.CONTAIN : ResizeMode.COVER)}
             shouldPlay={shouldPlay}
             isLooping={isLooping}
             isMuted={false}
             onPlaybackStatusUpdate={(s) => setStatus(s)}
+            onReadyForDisplay={(data) => {
+              if (data.naturalSize) {
+                setVideoNaturalSize(data.naturalSize);
+              }
+            }}
           />
         </View>
       </TouchableWithoutFeedback>

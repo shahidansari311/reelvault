@@ -34,9 +34,10 @@ import {
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 import { fetchReelData } from '../services/api';
-import { downloadFile } from '../utils/download';
+import { startBackgroundDownload } from '../services/backgroundDownload';
 import { CustomInput } from '../components/CustomInput';
 import { ProgressBar } from '../components/ProgressBar';
+import { DownloadProgressBar } from '../components/DownloadProgressBar';
 import { useIsFocused } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
@@ -69,7 +70,7 @@ const PreviewCard = ({ reelData, downloading, downloadProgress, handleDownload, 
       </View>
 
       {downloading && (
-        <ProgressBar progress={downloadProgress} label="Downloading Video" />
+        <DownloadProgressBar progress={downloadProgress} />
       )}
 
       <LinearGradient colors={['rgba(20,20,25,0.8)', 'rgba(10,10,15,0.95)']} style={styles.metaCard}>
@@ -95,7 +96,7 @@ const PreviewCard = ({ reelData, downloading, downloadProgress, handleDownload, 
               <Download color="#000" size={18} style={{ marginRight: 10 }} />
             )}
             <Text style={styles.downloadActionText}>
-              {downloading ? `SAVING ${Math.round(downloadProgress * 100)}%` : 'SAVE VIDEO'}
+              {downloading ? `SAVING ${downloadProgress?.percent || 0}%` : 'SAVE VIDEO'}
             </Text>
           </TouchableOpacity>
 
@@ -245,16 +246,14 @@ export default function ReelDownloaderScreen({ navigation, route }) {
   const handleDownload = async () => {
     if (!reelData?.videoUrl) return;
     setDownloading(true);
-    setDownloadProgress(0);
+    setDownloadProgress(null);
     
-    const isVideo = true; // Reels are always video
-    const ext = 'mp4';
     const fileName = `ig_reel_${Date.now()}.mp4`;
     
-    const success = await downloadFile(
+    const result = await startBackgroundDownload(
       reelData.videoUrl, 
       fileName, 
-      (progress) => setDownloadProgress(progress),
+      (progressData) => setDownloadProgress(progressData),
       {
         title: reelData.title || 'Instagram Reel',
         platform: 'instagram',
@@ -262,11 +261,11 @@ export default function ReelDownloaderScreen({ navigation, route }) {
       }
     );
     
-    if (success) {
+    if (result.success) {
       Alert.alert('Saved!', 'Video saved to your gallery.');
     }
     setDownloading(false);
-    setDownloadProgress(0);
+    setDownloadProgress(null);
   };
 
   const handleShare = async () => {

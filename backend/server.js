@@ -706,7 +706,7 @@ app.post('/download/reel', async (req, res) => {
 
   // Direct yt-dlp extraction (Cobalt instances are currently dead)
   const args = [
-    '-g',
+    '--dump-json',
     '--no-playlist',
     '--no-warnings',
     '--no-check-certificates',
@@ -727,7 +727,18 @@ app.post('/download/reel', async (req, res) => {
 
   try {
     const { stdout } = await runYtDlp(args, { timeoutMs: 30000 });
-    const videoUrl = stdout.trim().split('\n')[0];
+    
+    let info = {};
+    try {
+      info = JSON.parse(stdout.trim());
+    } catch(e) {}
+    
+    const videoUrl = info.url || stdout.trim().split('\n')[0];
+    
+    let thumbnailUrl = info.thumbnail;
+    if (!thumbnailUrl && info.thumbnails && info.thumbnails.length > 0) {
+      thumbnailUrl = info.thumbnails[info.thumbnails.length - 1].url;
+    }
 
     if (!videoUrl || !videoUrl.startsWith('http')) {
       return res.status(404).json({
@@ -736,7 +747,12 @@ app.post('/download/reel', async (req, res) => {
       });
     }
 
-    res.json({ videoUrl, type: 'video' });
+    res.json({ 
+      videoUrl, 
+      type: 'video', 
+      title: info.title || '',
+      thumbnailUrl 
+    });
   } catch (error) {
     const stderr = error.stderr || '';
     const message = error.err?.message || '';
@@ -893,7 +909,7 @@ app.get('/stories/:username', async (req, res) => {
 
   // Direct yt-dlp extraction (Cobalt instances are currently dead)
   const args = [
-    '-g',
+    '--dump-json',
     '--no-playlist',
     '--no-warnings',
     '--no-check-certificates',
@@ -915,21 +931,35 @@ app.get('/stories/:username', async (req, res) => {
 
   try {
     const { stdout } = await runYtDlp(args, { timeoutMs: 60000 });
-    const urls = stdout.trim().split(/\s+/).filter(url => url.startsWith('http'));
     
-    if (urls.length > 0) {
-      const results = urls.map(url => ({
-        type: url.includes('.mp4') || url.includes('video') ? 'video' : 'image',
-        url: url,
-        thumbnail: url 
-      }));
-      return res.json(results);
-    } else {
-      return res.status(404).json({ 
-        error: 'No Stories Right Now', 
-        message: 'This user hasn\'t posted any stories in the last 24 hours. Stories only last 24 hours, so check back later!' 
-      });
-    }
+    // Parse json lines
+    const jsonLines = stdout.trim().split('\n').filter(line => {
+      try { JSON.parse(line); return true; } catch { return false; }
+    });
+
+    if (jsonLines.length > 0) {
+      const results = jsonLines.map(line => {
+        const info = JSON.parse(line);
+        const url = info.url;
+        let thumbnail = info.thumbnail;
+        if (!thumbnail && info.thumbnails && info.thumbnails.length > 0) {
+           thumbnail = info.thumbnails[info.thumbnails.length - 1].url;
+        }
+        return {
+          type: (url && (url.includes('.mp4') || url.includes('video'))) ? 'video' : 'image',
+          url: url,
+          thumbnail: thumbnail || url,
+          title: info.title || ''
+        };
+      }).filter(item => item.url);
+      
+      if (results.length > 0) return res.json(results);
+    } 
+    
+    return res.status(404).json({ 
+      error: 'No Stories Right Now', 
+      message: 'This user hasn\'t posted any stories in the last 24 hours. Stories only last 24 hours, so check back later!' 
+    });
   } catch (error) {
     const stderr = error.stderr || '';
     const message = error.err?.message || '';
@@ -969,9 +999,6 @@ app.get('/proxy', async (req, res) => {
   console.log('Proxying request for:', url.substring(0, 50) + '...');
 
   try {
-    const protocol = url.startsWith('https') ? require('https') : require('http');
-    
-    // Forward the Range header if present
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
       'Referer': 'https://www.instagram.com/',
@@ -981,36 +1008,39 @@ app.get('/proxy', async (req, res) => {
       headers['Range'] = req.headers.range;
     }
 
-    const options = { headers, timeout: 20000 };
-
-    protocol.get(url, options, (proxyRes) => {
-      // Forward status and essential headers
-      res.status(proxyRes.statusCode);
-      
-      const responseHeaders = {
-        'Content-Type': proxyRes.headers['content-type'] || 'video/mp4',
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=3600',
-      };
-
-      if (proxyRes.headers['content-length']) responseHeaders['Content-Length'] = proxyRes.headers['content-length'];
-      if (proxyRes.headers['content-range']) responseHeaders['Content-Range'] = proxyRes.headers['content-range'];
-      if (proxyRes.headers['accept-ranges']) responseHeaders['Accept-Ranges'] = proxyRes.headers['accept-ranges'];
-
-      res.set(responseHeaders);
-      
-      proxyRes.pipe(res);
-      
-      proxyRes.on('error', (err) => {
-        console.error('Stream Error:', err);
-        if (!res.headersSent) res.status(500).send('Stream interrupted');
-      });
-    }).on('error', (e) => {
-      console.error('Proxy Request Error:', e);
-      if (!res.headersSent) res.status(500).send('Proxying failed');
+    const response = await axios({
+      method: 'get',
+      url: url,
+      headers: headers,
+      responseType: 'stream',
+      maxRedirects: 5,
+      timeout: 20000,
+      validateStatus: () => true // Allow any status code to pass through
     });
+
+    res.status(response.status);
+    
+    const responseHeaders = {
+      'Content-Type': response.headers['content-type'] || 'video/mp4',
+      'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'public, max-age=3600',
+    };
+
+    if (response.headers['content-length']) responseHeaders['Content-Length'] = response.headers['content-length'];
+    if (response.headers['content-range']) responseHeaders['Content-Range'] = response.headers['content-range'];
+    if (response.headers['accept-ranges']) responseHeaders['Accept-Ranges'] = response.headers['accept-ranges'];
+
+    res.set(responseHeaders);
+    
+    response.data.pipe(res);
+    
+    response.data.on('error', (err) => {
+      console.error('Stream Error:', err);
+      if (!res.headersSent) res.status(500).send('Stream interrupted');
+    });
+
   } catch (e) {
-    console.error('Proxy logic crash:', e);
+    console.error('Proxy logic crash:', e.message);
     if (!res.headersSent) res.status(500).send('Internal Server Error');
   }
 });

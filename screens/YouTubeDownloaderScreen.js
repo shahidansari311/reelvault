@@ -23,7 +23,8 @@ import {
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 import { CustomInput } from '../components/CustomInput';
 import { ProgressBar } from '../components/ProgressBar';
-import { downloadFile } from '../utils/download';
+import { DownloadProgressBar } from '../components/DownloadProgressBar';
+import { startBackgroundDownload } from '../services/backgroundDownload';
 import { fetchYouTubeInfo, requestYouTubeDownload } from '../services/api';
 
 export default function YouTubeDownloaderScreen({ navigation, route }) {
@@ -122,7 +123,7 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
       }
 
       const fileName = `youtube_${Date.now()}.${ext}`;
-      const success = await downloadFile(
+      const result = await startBackgroundDownload(
         payload.downloadUrl, 
         fileName, 
         (p) => setYtDownloadProgress(p),
@@ -133,13 +134,13 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
           thumbnail: ytInfo?.thumbnail || null,
         }
       );
-      if (success) {
+      if (result.success) {
         Alert.alert('Saved!', `${label} saved to your gallery.`);
       }
     };
 
     setYtDownloading(true);
-    setYtDownloadProgress(0);
+    setYtDownloadProgress(null);
     setYtError(null);
 
     try {
@@ -166,21 +167,20 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
           onPress: async () => {
             try {
               setYtDownloading(true);
-              setYtDownloadProgress(0);
+              setYtDownloadProgress(null);
               await attempt();
             } catch (e2) {
               const retryMsg = e2.response?.data?.message || e2.message || 'It still didn\'t work. Please try again later.';
               Alert.alert('Still Not Working', retryMsg);
             } finally {
               setYtDownloading(false);
-              setYtDownloadProgress(0);
+              setYtDownloadProgress(null);
             }
           },
         },
       ]);
     } finally {
       setYtDownloading(false);
-      setTimeout(() => setYtDownloadProgress(0), 600);
     }
   };
 
@@ -258,7 +258,7 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
 
           {ytDownloading && (
             <View style={{ marginTop: 18 }}>
-              <ProgressBar progress={ytDownloadProgress} label="Downloading..." />
+              <DownloadProgressBar progress={ytDownloadProgress} />
             </View>
           )}
 

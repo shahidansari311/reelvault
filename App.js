@@ -14,6 +14,7 @@ import AboutScreen from './screens/AboutScreen';
 import InAppPlayerScreen from './screens/InAppPlayerScreen';
 import { COLORS } from './constants/Theme';
 import api from './services/api';
+import { extractUrlFromText, getNavigationTarget } from './utils/urlParser';
 
 const Tab = createBottomTabNavigator();
 
@@ -32,18 +33,29 @@ const MyDarkTheme = {
 import * as MediaLibrary from 'expo-media-library';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
+import { setupNotificationChannel, requestNotificationPermission } from './services/notificationService';
 
 export default function App() {
   useEffect(() => {
-    // Request MediaLibrary permissions once permanently (Modern Android 13+ support)
+    // Request MediaLibrary permission ONCE on first launch — never again
     const requestPermissions = async () => {
       try {
+        await setupNotificationChannel();
+        await requestNotificationPermission();
+
+        // Check if already granted (no popup)
+        const { status: existing } = await MediaLibrary.getPermissionsAsync(true);
+        if (existing === 'granted') {
+          await AsyncStorage.setItem('hasAskedMediaPerm', 'true');
+          return;
+        }
+
+        // Only show the system dialog if we've never asked before
         const hasAsked = await AsyncStorage.getItem('hasAskedMediaPerm');
         if (!hasAsked) {
-          const { status } = await MediaLibrary.requestPermissionsAsync(true);
-          if (status === 'granted') {
-            await AsyncStorage.setItem('hasAskedMediaPerm', 'true');
-          }
+          await MediaLibrary.requestPermissionsAsync(true);
+          // Mark as asked regardless of result — never prompt again
+          await AsyncStorage.setItem('hasAskedMediaPerm', 'true');
         }
       } catch (err) {
         console.log('Permission request error:', err);
@@ -64,43 +76,29 @@ export default function App() {
 
   const navigationRef = useNavigationContainerRef();
 
-  // Extract YouTube Video ID using Regex
-  const extractYoutubeId = (url) => {
-    const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?\/\s]{11})/i;
-    const match = url.match(regex);
-    return match ? match[1] : null;
-  };
-
   useEffect(() => {
-    const handleIncomingURL = (url) => {
-      if (!url) return;
+    const handleIncomingURL = (rawUrl) => {
+      if (!rawUrl) return;
 
-      if (url.includes('instagram.com') || url.includes('instagr.am')) {
-        // auto-fill input OR trigger download
-        setTimeout(() => {
-          if (navigationRef.isReady()) {
-            navigationRef.navigate('Reels', { autoPaste: true, initialUrl: url });
-          }
-        }, 800);
-      } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
-        const videoId = extractYoutubeId(url);
-        // handle YouTube links
-        setTimeout(() => {
-          if (navigationRef.isReady()) {
-            navigationRef.navigate('YouTube', { 
-              autoPaste: true, 
-              initialUrl: url,
-              videoId: videoId 
-            });
-          }
-        }, 800);
-      }
+      // Extract clean URL from shared text (Instagram/YouTube sometimes include extra text)
+      const cleanUrl = extractUrlFromText(rawUrl);
+      const target = getNavigationTarget(cleanUrl);
+      if (!target) return;
+
+      // Wait for navigation to be ready, then route to the correct screen
+      setTimeout(() => {
+        if (navigationRef.isReady()) {
+          navigationRef.navigate(target.screen, target.params);
+        }
+      }, 800);
     };
 
+    // Handle when app was CLOSED and opened via share intent
     Linking.getInitialURL().then(url => {
       if (url) handleIncomingURL(url);
     });
 
+    // Handle when app was in BACKGROUND and brought to foreground via share
     const subscription = Linking.addEventListener('url', ({ url }) => {
       handleIncomingURL(url);
     });

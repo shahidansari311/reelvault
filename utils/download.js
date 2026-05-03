@@ -31,34 +31,26 @@ const getEmitter = () => {
  */
 export const downloadFile = async (url, fileName, onProgress, meta = null) => {
   try {
-    // 1. Check Permissions (Write-only avoids the AUDIO permission error)
-    let { status } = await MediaLibrary.getPermissionsAsync(true);
-    if (status !== 'granted') {
-      const Storage = require('@react-native-async-storage/async-storage').default;
-      const hasAsked = await Storage.getItem('hasAskedMediaPerm');
-      
-      if (!hasAsked) {
-        const response = await MediaLibrary.requestPermissionsAsync(true);
-        status = response.status;
-        await Storage.setItem('hasAskedMediaPerm', 'true');
-      }
+    // 1. Verify permissions (never re-prompt — App.js already asked once at startup)
+    //    The native DownloadManager path doesn't need MediaLibrary permission at all
+    //    (it writes to public Downloads/SaveX/), but the expo-file-system fallback does.
+    if (Platform.OS === 'android' && NativeDownload) {
+      // Native path — skip permission check entirely, DownloadManager handles it
+      return await startNativeBackgroundDownload(url, fileName, onProgress, meta);
     }
 
+    // Expo fallback path — check if permission was already granted at launch
+    const { status } = await MediaLibrary.getPermissionsAsync(true);
     if (status !== 'granted') {
       Alert.alert(
-        'Need Your Permission',
-        'We need access to your storage to save files. Please allow it in Settings.',
+        'Permission Required',
+        'Storage access is needed to save files. Please enable it in Settings.',
         [
           { text: 'Not Now', style: 'cancel' },
           { text: 'Open Settings', onPress: () => Linking.openSettings() }
         ]
       );
       return false;
-    }
-
-    // 2. Use Native Background Downloader (Android DownloadManager)
-    if (Platform.OS === 'android' && NativeDownload) {
-      return await startNativeBackgroundDownload(url, fileName, onProgress, meta);
     }
 
     // 3. Fallback: expo-file-system download (foreground only)
@@ -206,12 +198,36 @@ async function startExpoDownload(url, fileName, onProgress, meta) {
   }
   if (onProgress) onProgress(1);
 
-  // Save to Media Library (Gallery)
-  const asset = await MediaLibrary.createAssetAsync(result.uri);
+  let finalUri = result.uri;
+
   try {
+    // Step 2: Copy directly to app's permanent documents folder
+    // This does NOT trigger any modify permission dialog on Android 11+
+    const permanentDir = FileSystem.documentDirectory + 'SAVEX/';
+    await FileSystem.makeDirectoryAsync(permanentDir, { intermediates: true });
+    const permanentPath = permanentDir + fileName;
+    
+    // Use copy to avoid the modify permission dialog
+    await FileSystem.copyAsync({ from: result.uri, to: permanentPath });
+    finalUri = permanentPath;
+
+    // Step 3: Add to gallery using the permanent path — only asks ONCE ever
+    // because we are creating not modifying an existing external file
+    const asset = await MediaLibrary.createAssetAsync(permanentPath);
     await MediaLibrary.createAlbumAsync('SaveX', asset, false);
+
+    // Clean up cache
+    await FileSystem.deleteAsync(result.uri, { idempotent: true });
   } catch (albumErr) {
-    console.warn('Could not move to SaveX album, but file is saved to default gallery.');
+    console.warn('Could not move to SaveX album, but file is saved.', albumErr);
+    // Fallback: try creating asset directly from result if copy fails
+    try {
+      if (finalUri === result.uri) {
+        await MediaLibrary.createAssetAsync(result.uri);
+      }
+    } catch(e) {
+      console.warn('Fallback asset creation failed', e);
+    }
   }
   
   // Save to History (SQLite)
@@ -219,7 +235,7 @@ async function startExpoDownload(url, fileName, onProgress, meta) {
     const fileSizeMB = result.headers && result.headers['Content-Length'] 
       ? (parseInt(result.headers['Content-Length']) / 1024 / 1024).toFixed(2) 
       : 0;
-    await saveToHistory(meta, url, fileName, fileSizeMB, result.uri);
+    await saveToHistory(meta, url, fileName, fileSizeMB, finalUri);
   }
 
   return true;

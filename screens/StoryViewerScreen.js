@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 
 import { LinearGradient } from 'expo-linear-gradient';
+import * as FileSystem from 'expo-file-system/legacy';
 import VideoPlayer from '../components/VideoPlayer';
 import { useIsFocused } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
@@ -31,12 +32,65 @@ import {
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
 import { fetchStories, fetchReelData } from '../services/api';
-import { downloadFile } from '../utils/download';
+import { startBackgroundDownload } from '../services/backgroundDownload';
 import { ProgressBar } from '../components/ProgressBar';
+import { DownloadProgressBar } from '../components/DownloadProgressBar';
+import { parseInstagramUrl, extractUrlFromText } from '../utils/urlParser';
 
 const { width, height } = Dimensions.get('window');
 
-const StoryItem = React.memo(({ item, onPress, disabled, index }) => {
+/**
+ * CachedImage — downloads thumbnail to local cache to prevent black screen
+ * from expired Instagram CDN URLs.
+ */
+const CachedImage = React.memo(({ uri, style, resizeMode = 'cover' }) => {
+  const [cachedUri, setCachedUri] = React.useState(null);
+  const [error, setError] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!uri) return;
+    let cancelled = false;
+
+    const cacheThumbnail = async () => {
+      try {
+        const fileName = 'thumb_' + Math.random().toString(36).slice(2) + '.jpg';
+        const localPath = FileSystem.cacheDirectory + fileName;
+        const { uri: localUri } = await FileSystem.downloadAsync(uri, localPath);
+        if (!cancelled) setCachedUri(localUri);
+      } catch (e) {
+        if (!cancelled) {
+          // Fall back to original URI if cache fails
+          setCachedUri(uri);
+        }
+      }
+    };
+
+    cacheThumbnail();
+    return () => { cancelled = true; };
+  }, [uri]);
+
+  if (!cachedUri) {
+    return (
+      <View style={[style, { backgroundColor: '#1a1a2e', justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator color={COLORS.primary} size="small" />
+      </View>
+    );
+  }
+
+  return (
+    <Image 
+      source={{ uri: cachedUri }} 
+      style={style} 
+      resizeMode={resizeMode}
+      onError={() => setError(true)}
+    />
+  );
+});
+
+const CARD_WIDTH = (width - SPACING.lg * 2 - 15) / 2;
+const STORY_CARD_HEIGHT = CARD_WIDTH * (16 / 9) * 1.2;
+
+const StoryItem = React.memo(({ item, onPress, onDownload, disabled, index, username }) => {
   const scale = React.useRef(new Animated.Value(1)).current;
   const opacity = React.useRef(new Animated.Value(0)).current;
   const translateY = React.useRef(new Animated.Value(20)).current;
@@ -55,41 +109,65 @@ const StoryItem = React.memo(({ item, onPress, disabled, index }) => {
     Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true }).start();
   };
 
+  const displayUsername = detectedUsername || (username.includes('http') ? '' : username);
+
   return (
-    <Animated.View style={{ opacity, transform: [{ scale }, { translateY }] }}>
+    <Animated.View style={{ opacity, transform: [{ scale }, { translateY }], marginBottom: 16 }}>
       <TouchableOpacity 
-        style={styles.storyPreviewCard}
+        style={[styles.card, { marginBottom: 0 }]}
+        activeOpacity={0.9}
         onPress={() => onPress(item)}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
         disabled={disabled}
-        activeOpacity={1}
       >
-        {item.type === 'video' ? (
-          <View style={styles.videoPreviewContainer}>
-            <Image 
-              source={{ uri: item.thumbnail || item.url }} 
-              style={styles.storyThumb} 
-              resizeMode="cover"
-            />
-            <View style={styles.playOverlay}>
-              <Play color={COLORS.primary} size={32} />
-            </View>
-          </View>
-        ) : (
-          <Image 
-            source={{ uri: item.url }} 
-            style={styles.storyThumb} 
-            resizeMode="cover"
+        {/* Thumbnail */}
+        <View style={styles.thumbContainer}>
+          <CachedImage 
+            uri={item.thumbnail || item.url} 
+            style={styles.thumb} 
+            resizeMode="contain"
           />
-        )}
-        <View style={styles.typeBadge}>
-          {item.type === 'video' ? (
-            <Play color="#FFF" size={10} style={{ marginRight: 4 }} />
-          ) : (
-            <Eye color="#FFF" size={10} style={{ marginRight: 4 }} />
+          
+          {/* VIDEO badge top right */}
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>▷ {item.type?.toUpperCase() || 'VIDEO'}</Text>
+          </View>
+
+          {/* Duration bottom right */}
+          {item.duration && (
+            <View style={styles.durationBadge}>
+              <Text style={styles.durationText}>{item.duration}</Text>
+            </View>
           )}
-          <Text style={styles.typeText}>{item.type.toUpperCase()}</Text>
+
+          {/* Dark gradient overlay at bottom */}
+          <LinearGradient colors={['transparent', '#00000099']} style={styles.gradient} />
+        </View>
+
+        {/* Card bottom info */}
+        <View style={styles.cardInfo}>
+          {/* Username row */}
+          <View style={styles.userRow}>
+            <View style={styles.avatarPlaceholder}>
+              <Text style={styles.avatarText}>
+                {displayUsername ? displayUsername.charAt(0).toUpperCase() : '👤'}
+              </Text>
+            </View>
+            <Text style={styles.username} numberOfLines={1}>
+              {displayUsername ? `@${displayUsername}` : 'Story'}
+            </Text>
+          </View>
+
+          {/* Download button */}
+          <TouchableOpacity
+            style={styles.downloadBtn}
+            onPress={() => onDownload(item)}
+            activeOpacity={0.8}
+            disabled={disabled}
+          >
+            <Text style={styles.downloadBtnText}>⬇ Download</Text>
+          </TouchableOpacity>
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -114,7 +192,7 @@ const SkeletonItem = ({ index }) => {
   }, []);
 
   return (
-    <Animated.View style={[styles.storyPreviewCard, { opacity, backgroundColor: 'rgba(255,255,255,0.08)' }]} />
+    <Animated.View style={[styles.card, { opacity, backgroundColor: 'rgba(255,255,255,0.08)', height: STORY_CARD_HEIGHT + 80 }]} />
   );
 };
 
@@ -140,7 +218,7 @@ const AnimatedErrorBubble = ({ error }) => {
   );
 };
 
-export default function StoryViewerScreen({ navigation }) {
+export default function StoryViewerScreen({ navigation, route }) {
   const isFocused = useIsFocused();
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
@@ -151,6 +229,7 @@ export default function StoryViewerScreen({ navigation }) {
   const [error, setError] = useState(null);
   const [searchType, setSearchType] = useState('profile'); // 'profile' or 'link'
   const [selectedStory, setSelectedStory] = useState(null);
+  const [detectedUsername, setDetectedUsername] = useState('');
 
   const debounceTimeoutRef = React.useRef(null);
   const fetchIdRef = React.useRef(0);
@@ -164,15 +243,41 @@ export default function StoryViewerScreen({ navigation }) {
     };
   }, []);
 
+  // Handle share intent: auto-fill username/URL when opened via share
+  React.useEffect(() => {
+    if (route?.params?.initialUrl) {
+      const url = route.params.initialUrl;
+      const parsed = parseInstagramUrl(url);
+
+      if (parsed && parsed.type === 'story' && parsed.username) {
+        // Story URL — auto-fill username and auto-fetch
+        setUsername(parsed.username);
+        setDetectedUsername(parsed.username);
+        setSearchType('profile');
+        setTimeout(() => handleFetchWithTarget(parsed.username), 500);
+      } else {
+        // Other IG URL — put in input as link
+        setUsername(url);
+        setSearchType('link');
+        setTimeout(() => handleFetchWithTarget(url), 500);
+      }
+    } else if (route?.params?.initialUsername) {
+      setUsername(route.params.initialUsername);
+      setDetectedUsername(route.params.initialUsername);
+      setSearchType('profile');
+      setTimeout(() => handleFetchWithTarget(route.params.initialUsername), 500);
+    }
+  }, [route?.params?.initialUrl, route?.params?.initialUsername]);
 
 
-  const handleFetch = async () => {
+  // Reusable fetch function that accepts a target parameter (for share intent auto-fetch)
+  const handleFetchWithTarget = async (targetInput) => {
+    if (!targetInput) return;
+
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
       debounceTimeoutRef.current = null;
     }
-
-    if (!username) return;
 
     const currentFetchId = ++fetchIdRef.current;
 
@@ -186,13 +291,23 @@ export default function StoryViewerScreen({ navigation }) {
     setError(null);
     setStories([]);
 
-    let target = username.trim();
+    let target = (targetInput || '').trim();
     let isReel = false;
     
     if (target.includes('instagram.com/')) {
-      if (target.includes('/reel/') || target.includes('/reels/') || target.includes('/p/')) {
+      // Auto-parse the URL to extract username or detect reel/post
+      const parsed = parseInstagramUrl(target);
+
+      if (parsed.type === 'reel' || parsed.type === 'post') {
         isReel = true;
+      } else if (parsed.type === 'story' && parsed.username) {
+        target = parsed.username;
+        setDetectedUsername(parsed.username);
+      } else if (parsed.type === 'profile' && parsed.username) {
+        target = parsed.username;
+        setDetectedUsername(parsed.username);
       } else {
+        // Fallback: extract username from URL path
         const parts = target.split('/');
         const storyIndex = parts.indexOf('stories');
         if (storyIndex !== -1 && parts[storyIndex + 1]) {
@@ -213,7 +328,7 @@ export default function StoryViewerScreen({ navigation }) {
     try {
       let results = [];
       if (isReel) {
-        const data = await fetchReelData(username.trim());
+        const data = await fetchReelData((targetInput || '').trim());
         results = [{
           type: 'video',
           url: data.videoUrl,
@@ -277,13 +392,16 @@ export default function StoryViewerScreen({ navigation }) {
     }
   };
 
+  const handleFetch = async () => {
+    handleFetchWithTarget(username);
+  };
 
   const handleDownload = async (item) => {
     if (!item) return;
     setDownloading(true);
-    setDownloadProgress(0);
+    setDownloadProgress(null);
     const fileName = `story_${Date.now()}.${item.type === 'video' ? 'mp4' : 'jpg'}`;
-    const success = await downloadFile(
+    const result = await startBackgroundDownload(
       item.url, 
       fileName, 
       (p) => setDownloadProgress(p),
@@ -294,8 +412,8 @@ export default function StoryViewerScreen({ navigation }) {
       }
     );
     setDownloading(false);
-    setDownloadProgress(0);
-    if (success) Alert.alert('Saved!', 'Media saved to your gallery.');
+    setDownloadProgress(null);
+    if (result.success) Alert.alert('Saved!', 'Media saved to your gallery.');
   };
 
   const renderHeader = () => (
@@ -339,6 +457,21 @@ export default function StoryViewerScreen({ navigation }) {
             onChangeText={(text) => {
               setUsername(text);
               setError(null);
+              // Auto-detect URL vs username
+              if (text.includes('instagram.com') || text.includes('http')) {
+                setSearchType('link');
+                const parsed = parseInstagramUrl(text);
+                if (parsed && parsed.username) {
+                  setDetectedUsername(parsed.username);
+                } else {
+                  setDetectedUsername('');
+                }
+              } else {
+                if (searchType === 'link' && !text.includes('/')) {
+                  setSearchType('profile');
+                }
+                setDetectedUsername('');
+              }
             }}
             autoCapitalize="none"
             autoCorrect={false}
@@ -358,8 +491,15 @@ export default function StoryViewerScreen({ navigation }) {
                 setError(null);
                 if (cleanText.includes('instagram.com') || cleanText.includes('http')) {
                   setSearchType('link');
+                  const parsed = parseInstagramUrl(cleanText);
+                  if (parsed && parsed.username) {
+                    setDetectedUsername(parsed.username);
+                  } else {
+                    setDetectedUsername('');
+                  }
                 } else {
                   setSearchType('profile');
+                  setDetectedUsername('');
                 }
               }}
             >
@@ -368,6 +508,13 @@ export default function StoryViewerScreen({ navigation }) {
           </View>
         </View>
         
+        {detectedUsername ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, marginTop: -10, marginLeft: 10 }}>
+            <User color={COLORS.primary} size={14} style={{ marginRight: 6 }} />
+            <Text style={{ color: COLORS.primary, fontSize: 13, fontWeight: 'bold' }}>@{detectedUsername}</Text>
+          </View>
+        ) : null}
+
         <TouchableOpacity 
           style={[styles.fetchBtn, loading && { opacity: 0.7 }]} 
           onPress={handleFetch}
@@ -394,9 +541,13 @@ export default function StoryViewerScreen({ navigation }) {
     </>
   );
 
-  const renderEmpty = () => !loading && (
-    <View style={styles.emptyContainer}>
-      <TrendingUp color={COLORS.textSecondary} size={40} style={{ opacity: 0.3 }} />
+  const renderEmpty = () => !loading && stories.length === 0 && (
+    <View style={styles.empty}>
+      <Text style={styles.emptyIcon}>📭</Text>
+      <Text style={styles.emptyText}>No stories found</Text>
+      <Text style={styles.emptySubText}>
+        Enter an Instagram username above to load stories
+      </Text>
     </View>
   );
 
@@ -440,7 +591,9 @@ export default function StoryViewerScreen({ navigation }) {
           <StoryItem 
             item={item} 
             index={index}
+            username={username}
             onPress={setSelectedStory} 
+            onDownload={handleDownload}
             disabled={downloading} 
           />
         )}
@@ -497,7 +650,7 @@ export default function StoryViewerScreen({ navigation }) {
           <LinearGradient colors={['transparent', 'rgba(0,0,0,0.95)']} style={styles.modalBottomControls}>
             {downloading && (
               <View style={styles.modalProgressContainer}>
-                <ProgressBar progress={downloadProgress} label="Saving to Vault" />
+                <DownloadProgressBar progress={downloadProgress} />
               </View>
             )}
 
@@ -512,7 +665,7 @@ export default function StoryViewerScreen({ navigation }) {
                 <Download color="#000" size={24} style={{ marginRight: 10 }} />
               )}
               <Text style={styles.modalDownloadText}>
-                {downloading ? `SAVING ${Math.round(downloadProgress * 100)}%` : 'SAVE TO VAULT'}
+                {downloading ? `SAVING ${downloadProgress?.percent || 0}%` : 'SAVE TO VAULT'}
               </Text>
             </TouchableOpacity>
           </LinearGradient>
@@ -691,45 +844,111 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: 40,
   },
-  storyPreviewCard: {
-    width: (width - SPACING.lg * 2 - 15) / 2,
-    aspectRatio: 9 / 16,
-    borderRadius: 24,
+  // Card Styles
+  card: {
+    width: CARD_WIDTH,
+    backgroundColor: '#12122a',
+    borderRadius: 14,
     overflow: 'hidden',
-    backgroundColor: COLORS.surface,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    marginBottom: 16,
   },
-  storyThumb: {
+  thumbContainer: {
     width: '100%',
-    height: '100%',
-  },
-  videoPreviewContainer: {
-    width: '100%',
-    height: '100%',
+    height: STORY_CARD_HEIGHT,
     backgroundColor: '#000',
+    position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  typeBadge: {
+  thumb: {
+    width: '100%',
+    height: '100%',
+  },
+  badge: {
     position: 'absolute',
-    top: 12,
-    right: 12,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 12,
+    top: 8,
+    right: 8,
+    backgroundColor: '#000000aa',
+    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
   },
-  typeText: {
-    color: '#FFF',
+  badgeText: {
+    color: '#fff',
     fontSize: 9,
-    fontWeight: 'bold',
-    letterSpacing: 1,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  durationBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: '#000000bb',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    zIndex: 2,
+  },
+  durationText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  gradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 50,
+  },
+  cardInfo: {
+    padding: 10,
+    gap: 8,
+    backgroundColor: '#12122a',
+  },
+  userRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  avatarPlaceholder: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  avatarText: {
+    color: '#000',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  username: {
+    color: '#ccc',
+    fontSize: 11,
+    fontWeight: '500',
+    flex: 1,
+  },
+  downloadBtn: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 8,
+    paddingVertical: 9,
+    alignItems: 'center',
+  },
+  downloadBtnText: {
+    color: '#000',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   playOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -815,6 +1034,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     padding: 10,
     borderRadius: 15,
+  },
+  // Empty state
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    marginTop: 80,
+    gap: 8,
+  },
+  emptyIcon: { fontSize: 48 },
+  emptyText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  emptySubText: {
+    color: '#666',
+    fontSize: 13,
+    textAlign: 'center',
+    paddingHorizontal: 32,
   },
   storiesContainer: {
     width: '100%',
