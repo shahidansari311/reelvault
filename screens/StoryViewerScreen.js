@@ -109,7 +109,7 @@ const StoryItem = React.memo(({ item, onPress, onDownload, disabled, index, user
     Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: true }).start();
   };
 
-  const displayUsername = detectedUsername || (username.includes('http') ? '' : username);
+  const displayUsername = username.includes('http') ? '' : username;
 
   return (
     <Animated.View style={{ opacity, transform: [{ scale }, { translateY }], marginBottom: 16 }}>
@@ -631,7 +631,7 @@ export default function StoryViewerScreen({ navigation, route }) {
               <VideoPlayer
                 key={selectedStory.url}
                 uri={selectedStory.url}
-                title={detectedUsername || (username.includes('http') ? 'Instagram Story' : `Story by @${username}`)}
+                title={username.includes('http') ? 'Instagram Story' : `Story by @${username}`}
                 shouldPlay={isFocused && !!selectedStory && !downloading}
                 isLooping
                 aspectRatio={undefined}

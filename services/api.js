@@ -41,7 +41,7 @@ export const getProxyUrl = (originalUrl) => {
 };
 
 export const fetchReelData = async (reelUrl) => {
-  const cacheKey = `reel_${reelUrl}`;
+  const cacheKey = `v2_reel_${reelUrl}`;
   const cached = await getCache(cacheKey);
   if (cached) return cached;
 
@@ -72,7 +72,7 @@ export const fetchReelData = async (reelUrl) => {
 };
 
 export const fetchPostData = async (postUrl) => {
-  const cacheKey = `post_${postUrl}`;
+  const cacheKey = `v2_post_${postUrl}`;
   const cached = await getCache(cacheKey);
   if (cached) return cached;
 
@@ -103,7 +103,7 @@ export const fetchPostData = async (postUrl) => {
 };
 
 export const fetchStories = async (username) => {
-  const cacheKey = `stories_${username}`;
+  const cacheKey = `v2_stories_${username}`;
   const cached = await getCache(cacheKey);
   if (cached) return cached;
 
