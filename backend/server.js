@@ -55,6 +55,20 @@ app.use('/youtube/files', express.static(YT_DOWNLOADS_DIR, {
   }
 }));
 
+const IG_DOWNLOADS_DIR = path.join(__dirname, 'downloads', 'instagram');
+try {
+  fs.mkdirSync(IG_DOWNLOADS_DIR, { recursive: true });
+} catch (e) {
+  console.error('Failed to create Instagram downloads dir', e);
+}
+
+app.use('/instagram/files', express.static(IG_DOWNLOADS_DIR, {
+  setHeaders(res) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+  }
+}));
+
 // Logger Middleware for tracking requests in deployment logs
 app.use((req, res, next) => {
   const start = Date.now();
@@ -693,8 +707,8 @@ app.post('/youtube/download', async (req, res) => {
 
 // ============================================================
 // 1A. Download REEL Endpoint — Strictly VIDEO extraction
-// Fallback chain: Method1 (yt-dlp+headers) → Method2 (embed scrape)
-//                 → Method3 (RapidAPI) → Method4 (yt-dlp+cookies)
+// Fallback chain: Method0 (RapidAPI PRIMARY) → Method1 (yt-dlp+headers)
+//                 → Method2 (embed scrape) → Method3 (yt-dlp+cookies)
 // ============================================================
 
 // Helper: extract shortcode from any Instagram reel/post/p URL
@@ -713,6 +727,32 @@ function parseYtDlpReelOutput(stdout) {
     thumbnailUrl = info.thumbnails[info.thumbnails.length - 1].url;
   }
   return { videoUrl, thumbnailUrl, title: info.title || '' };
+}
+
+// Helper: build public URL for a saved Instagram file
+function makeIgFileUrl(req, fileName) {
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').toString().split(',')[0].trim();
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  return `${proto}://${host}/instagram/files/${encodeURIComponent(fileName)}`;
+}
+
+// Helper: download a remote video URL and save it to IG_DOWNLOADS_DIR
+async function downloadVideoToDisk(cdnUrl, fileName) {
+  const outputPath = path.join(IG_DOWNLOADS_DIR, fileName);
+  const response = await axios.get(cdnUrl, {
+    responseType: 'stream',
+    timeout: 60000,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    },
+  });
+  await new Promise((resolve, reject) => {
+    const writer = fs.createWriteStream(outputPath);
+    response.data.pipe(writer);
+    writer.on('finish', resolve);
+    writer.on('error', reject);
+  });
+  return outputPath;
 }
 
 app.post('/download/reel', async (req, res) => {
@@ -741,6 +781,66 @@ app.post('/download/reel', async (req, res) => {
     '--sleep-interval', '3',
     '--max-sleep-interval', '6',
   ];
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // METHOD 0 — RapidAPI Instagram Reels Downloader (PRIMARY)
+  // ══════════════════════════════════════════════════════════════════════════
+  const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY || '1a41f14e48mshc781d925569c851p1ab0d0jsn1571078ce222';
+  const RAPIDAPI_HOST = process.env.RAPIDAPI_HOST || 'instagram-reels-downloader-api.p.rapidapi.com';
+  try {
+    console.log('[Reel] Method 0 (PRIMARY): RapidAPI Instagram Reels Downloader');
+    const rapidRes = await axios.get(`https://${RAPIDAPI_HOST}/download`, {
+      params: { url: cleanUrl },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-rapidapi-host': RAPIDAPI_HOST,
+        'x-rapidapi-key': RAPIDAPI_KEY,
+      },
+      timeout: 25000,
+    });
+
+    const data = rapidRes.data;
+    console.log('[Reel] Method 0: RapidAPI raw response keys:', Object.keys(data || {}));
+
+    // Extract the video CDN URL from the response
+    // Common shapes: { url }, { video }, { download_url }, { media }, { result: { url } }, array of items
+    let cdnUrl = null;
+    if (typeof data === 'string' && data.startsWith('http')) {
+      cdnUrl = data;
+    } else if (Array.isArray(data) && data.length > 0) {
+      cdnUrl = data[0]?.url || data[0]?.download_url || data[0]?.video || data[0];
+    } else if (data && typeof data === 'object') {
+      cdnUrl =
+        data.url ||
+        data.download_url ||
+        data.video ||
+        data.media ||
+        data.VideoURL ||
+        data.result?.url ||
+        data.result?.download_url ||
+        (Array.isArray(data.result) && data.result[0]?.url) ||
+        null;
+    }
+
+    if (cdnUrl && typeof cdnUrl === 'string' && cdnUrl.startsWith('http')) {
+      // Download the video file to disk and serve it
+      const fileName = `reel_${Date.now()}.mp4`;
+      try {
+        await downloadVideoToDisk(cdnUrl, fileName);
+        const videoUrl = makeIgFileUrl(req, fileName);
+        const thumbnailUrl = data?.thumbnail || data?.thumbnail_url || null;
+        console.log('[Reel] Method 0 succeeded — saved as:', fileName);
+        return res.json({ videoUrl, type: 'video', title: data?.title || '', thumbnailUrl });
+      } catch (dlErr) {
+        console.warn('[Reel] Method 0: RapidAPI CDN URL retrieved but file download failed:', dlErr.message);
+        // Still return the CDN URL directly so the client can attempt it
+        return res.json({ videoUrl: cdnUrl, type: 'video', title: data?.title || '', thumbnailUrl: data?.thumbnail || null });
+      }
+    }
+    console.warn('[Reel] Method 0: RapidAPI returned no usable video URL — falling through');
+  } catch (err0) {
+    console.warn('[Reel] Method 0 failed:', (err0.response?.data ? JSON.stringify(err0.response.data).slice(0, 200) : err0.message?.slice(0, 200)));
+  }
 
   // ══════════════════════════════════════════════════════════════════════════
   // METHOD 1 — yt-dlp with browser headers (no login required)
@@ -812,43 +912,10 @@ app.post('/download/reel', async (req, res) => {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  // METHOD 3 — RapidAPI Instagram downloader fallback
-  // ══════════════════════════════════════════════════════════════════════════
-  const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
-  if (RAPIDAPI_KEY) {
-    try {
-      console.log('[Reel] Method 3: RapidAPI Instagram downloader');
-      const rapidRes = await axios.get('https://instagram-downloader-download-instagram-videos-stories.p.rapidapi.com/index', {
-        params: { url: cleanUrl },
-        headers: {
-          'X-RapidAPI-Key': RAPIDAPI_KEY,
-          'X-RapidAPI-Host': 'instagram-downloader-download-instagram-videos-stories.p.rapidapi.com',
-        },
-        timeout: 20000,
-      });
-
-      const data = rapidRes.data;
-      // RapidAPI response shape: { media, thumbnail } or { url }
-      const videoUrl = data?.media || data?.url || data?.video || null;
-      const thumbnailUrl = data?.thumbnail || data?.thumbnail_url || null;
-
-      if (videoUrl && videoUrl.startsWith('http')) {
-        console.log('[Reel] Method 3 succeeded (RapidAPI)');
-        return res.json({ videoUrl, type: 'video', title: data?.title || '', thumbnailUrl });
-      }
-      console.warn('[Reel] Method 3: RapidAPI returned no usable video URL');
-    } catch (err3) {
-      console.warn('[Reel] Method 3 failed:', err3.message?.slice(0, 200));
-    }
-  } else {
-    console.log('[Reel] Method 3 skipped: RAPIDAPI_KEY not set');
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // METHOD 4 — yt-dlp with cookies file (full auth fallback)
+  // METHOD 3 — yt-dlp with cookies file (full auth fallback)
   // ══════════════════════════════════════════════════════════════════════════
   try {
-    console.log('[Reel] Method 4: yt-dlp + cookies file');
+    console.log('[Reel] Method 3: yt-dlp + cookies file');
     const cookiesFile = COOKIES_PATH || '/tmp/instagram_cookies.txt';
 
     if (!fs.existsSync(cookiesFile)) throw new Error(`Cookies file not found at ${cookiesFile}`);
@@ -862,18 +929,18 @@ app.post('/download/reel', async (req, res) => {
     const { videoUrl, thumbnailUrl, title } = parseYtDlpReelOutput(stdout);
 
     if (videoUrl && videoUrl.startsWith('http')) {
-      console.log('[Reel] Method 4 succeeded (cookies)');
+      console.log('[Reel] Method 3 succeeded (cookies)');
       return res.json({ videoUrl, type: 'video', title, thumbnailUrl });
     }
-    console.warn('[Reel] Method 4: parsed empty video URL');
-  } catch (err4) {
-    console.warn('[Reel] Method 4 failed:', (err4.stderr || err4.err?.message || err4.message || '').slice(0, 200));
+    console.warn('[Reel] Method 3: parsed empty video URL');
+  } catch (err3) {
+    console.warn('[Reel] Method 3 failed:', (err3.stderr || err3.err?.message || err3.message || '').slice(0, 200));
   }
 
   // ══════════════════════════════════════════════════════════════════════════
   // ALL METHODS EXHAUSTED — return a structured error
   // ══════════════════════════════════════════════════════════════════════════
-  console.error('[Reel] All 4 extraction methods failed for:', cleanUrl);
+  console.error('[Reel] All extraction methods failed for:', cleanUrl);
   return res.status(503).json({
     error: 'Could Not Download Reel',
     message: 'We tried multiple methods to download this Reel but all failed. Instagram may be rate-limiting us, the reel might be private, or the link could be invalid. Please try again later.',
