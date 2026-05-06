@@ -693,7 +693,28 @@ app.post('/youtube/download', async (req, res) => {
 
 // ============================================================
 // 1A. Download REEL Endpoint — Strictly VIDEO extraction
+// Fallback chain: Method1 (yt-dlp+headers) → Method2 (embed scrape)
+//                 → Method3 (RapidAPI) → Method4 (yt-dlp+cookies)
 // ============================================================
+
+// Helper: extract shortcode from any Instagram reel/post/p URL
+function extractIgShortcode(url) {
+  const m = url.match(/instagram\.com\/(?:reel|p|tv)\/([A-Za-z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+// Helper: build a clean success payload from yt-dlp JSON stdout
+function parseYtDlpReelOutput(stdout) {
+  let info = {};
+  try { info = JSON.parse(stdout.trim()); } catch (_) {}
+  const videoUrl = info.url || stdout.trim().split('\n')[0];
+  let thumbnailUrl = info.thumbnail;
+  if (!thumbnailUrl && Array.isArray(info.thumbnails) && info.thumbnails.length > 0) {
+    thumbnailUrl = info.thumbnails[info.thumbnails.length - 1].url;
+  }
+  return { videoUrl, thumbnailUrl, title: info.title || '' };
+}
+
 app.post('/download/reel', async (req, res) => {
   const { reelUrl } = req.body;
 
@@ -704,88 +725,159 @@ app.post('/download/reel', async (req, res) => {
   const cleanUrl = reelUrl.trim();
   console.log('Starting REEL (video) extraction for:', cleanUrl);
 
-  // Direct yt-dlp extraction (Cobalt instances are currently dead)
-  const args = [
+  // ── Shared browser-like headers for yt-dlp ──────────────────────────────
+  const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+  const BASE_YTDLP_ARGS = [
     '--dump-json',
     '--no-playlist',
     '--no-warnings',
     '--no-check-certificates',
     '--geo-bypass',
     '--format', 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio/best',
-    '--add-header', 'Sec-Ch-Ua: "Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
-    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-    '--referer', 'https://www.instagram.com/'
+    '--user-agent', BROWSER_UA,
+    '--add-header', 'Accept-Language: en-US,en;q=0.9',
+    '--add-header', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    '--referer', 'https://www.instagram.com/',
+    '--sleep-interval', '3',
+    '--max-sleep-interval', '6',
   ];
 
-  if (COOKIES_PATH) {
-    args.push('--cookies', COOKIES_PATH);
-  } else {
-    args.push('--cookies-from-browser', 'chrome', '--cookies-from-browser', 'edge', '--cookies-from-browser', 'brave');
-  }
-
-  args.push(cleanUrl);
-
+  // ══════════════════════════════════════════════════════════════════════════
+  // METHOD 1 — yt-dlp with browser headers (no login required)
+  // ══════════════════════════════════════════════════════════════════════════
   try {
+    console.log('[Reel] Method 1: yt-dlp + browser headers');
+    const args = [...BASE_YTDLP_ARGS, cleanUrl];
     const { stdout } = await runYtDlp(args, { timeoutMs: 30000 });
-    
-    let info = {};
-    try {
-      info = JSON.parse(stdout.trim());
-    } catch(e) {}
-    
-    const videoUrl = info.url || stdout.trim().split('\n')[0];
-    
-    let thumbnailUrl = info.thumbnail;
-    if (!thumbnailUrl && info.thumbnails && info.thumbnails.length > 0) {
-      thumbnailUrl = info.thumbnails[info.thumbnails.length - 1].url;
+    const { videoUrl, thumbnailUrl, title } = parseYtDlpReelOutput(stdout);
+
+    if (videoUrl && videoUrl.startsWith('http')) {
+      console.log('[Reel] Method 1 succeeded');
+      return res.json({ videoUrl, type: 'video', title, thumbnailUrl });
     }
-
-    if (!videoUrl || !videoUrl.startsWith('http')) {
-      return res.status(404).json({
-        error: 'Could Not Get Video',
-        message: 'We couldn\'t extract the video from this Reel. Instagram might be blocking us — please try again in a few minutes.'
-      });
-    }
-
-    res.json({ 
-      videoUrl, 
-      type: 'video', 
-      title: info.title || '',
-      thumbnailUrl 
-    });
-  } catch (error) {
-    const stderr = error.stderr || '';
-    const message = error.err?.message || '';
-    console.error('Reel Extraction Error:', stderr || message);
-
-    let errorMsg = 'Something Went Wrong';
-    let subMsg = 'We couldn\'t get this Reel. The link might be broken or the reel may no longer exist.';
-    let statusCode = 500;
-
-    if (stderr.includes('Login required') || stderr.includes('Private') || stderr.includes('private') || stderr.includes('login_required') || stderr.includes('login required')) {
-      errorMsg = 'This Account is Private';
-      subMsg = 'This Reel belongs to a private account. We can only download Reels from public accounts.';
-      statusCode = 403;
-    } else if (stderr.includes('404') || stderr.includes('Not Found') || stderr.includes('does not exist')) {
-      errorMsg = 'Reel Not Found';
-      subMsg = 'This Reel has been deleted or the link is wrong. Please double-check the link and try again.';
-      statusCode = 404;
-    } else if (error.err?.killed || message.includes('timeout')) {
-      errorMsg = 'Taking Too Long';
-      subMsg = 'The request is taking too long. This can happen with large videos or when Instagram is slow. Please try again.';
-      statusCode = 504;
-    } else if (stderr.includes('Sign in') || stderr.includes('Rate limit') || stderr.includes('429') || stderr.includes('too many') || stderr.includes('login required')) {
-      errorMsg = 'Too Many Requests';
-      subMsg = 'Instagram is temporarily limiting our access. Please wait a minute or two and try again.';
-      statusCode = 429;
-    }
-
-    return res.status(statusCode).json({
-      error: errorMsg,
-      message: subMsg,
-      details: process.env.NODE_ENV === 'development' ? stderr : undefined
-    });
+    console.warn('[Reel] Method 1: parsed empty video URL — falling through');
+  } catch (err1) {
+    console.warn('[Reel] Method 1 failed:', (err1.stderr || err1.err?.message || '').slice(0, 200));
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // METHOD 2 — Instagram embed page scrape (no API key needed)
+  // ══════════════════════════════════════════════════════════════════════════
+  try {
+    console.log('[Reel] Method 2: Instagram embed page scrape');
+    const shortcode = extractIgShortcode(cleanUrl);
+    if (!shortcode) throw new Error('Could not extract shortcode from URL');
+
+    const embedUrl = `https://www.instagram.com/reel/${shortcode}/embed/`;
+    const embedRes = await axios.get(embedUrl, {
+      headers: {
+        'User-Agent': BROWSER_UA,
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Referer': 'https://www.instagram.com/',
+      },
+      timeout: 15000,
+    });
+
+    const html = embedRes.data || '';
+    // Try multiple patterns Instagram uses for the video src
+    const patterns = [
+      /video_url":"(https:[^"]+\.mp4[^"]*)"/,
+      /"contentUrl":"(https:[^"]+\.mp4[^"]*)"/,
+      /src="(https:\/\/[^"]+\.mp4[^"]*)"/,
+      /property="og:video" content="(https:[^"]+)"/,
+    ];
+
+    let videoUrl = null;
+    for (const pattern of patterns) {
+      const m = html.match(pattern);
+      if (m) {
+        videoUrl = m[1].replace(/\\u0026/g, '&').replace(/\\/g, '');
+        break;
+      }
+    }
+
+    // Thumbnail from og:image
+    let thumbnailUrl = null;
+    const thumbMatch = html.match(/property="og:image" content="([^"]+)"/);
+    if (thumbMatch) thumbnailUrl = thumbMatch[1];
+
+    if (videoUrl && videoUrl.startsWith('http')) {
+      console.log('[Reel] Method 2 succeeded (embed scrape)');
+      return res.json({ videoUrl, type: 'video', title: '', thumbnailUrl });
+    }
+    console.warn('[Reel] Method 2: no video URL found in embed HTML');
+  } catch (err2) {
+    console.warn('[Reel] Method 2 failed:', err2.message?.slice(0, 200));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // METHOD 3 — RapidAPI Instagram downloader fallback
+  // ══════════════════════════════════════════════════════════════════════════
+  const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
+  if (RAPIDAPI_KEY) {
+    try {
+      console.log('[Reel] Method 3: RapidAPI Instagram downloader');
+      const rapidRes = await axios.get('https://instagram-downloader-download-instagram-videos-stories.p.rapidapi.com/index', {
+        params: { url: cleanUrl },
+        headers: {
+          'X-RapidAPI-Key': RAPIDAPI_KEY,
+          'X-RapidAPI-Host': 'instagram-downloader-download-instagram-videos-stories.p.rapidapi.com',
+        },
+        timeout: 20000,
+      });
+
+      const data = rapidRes.data;
+      // RapidAPI response shape: { media, thumbnail } or { url }
+      const videoUrl = data?.media || data?.url || data?.video || null;
+      const thumbnailUrl = data?.thumbnail || data?.thumbnail_url || null;
+
+      if (videoUrl && videoUrl.startsWith('http')) {
+        console.log('[Reel] Method 3 succeeded (RapidAPI)');
+        return res.json({ videoUrl, type: 'video', title: data?.title || '', thumbnailUrl });
+      }
+      console.warn('[Reel] Method 3: RapidAPI returned no usable video URL');
+    } catch (err3) {
+      console.warn('[Reel] Method 3 failed:', err3.message?.slice(0, 200));
+    }
+  } else {
+    console.log('[Reel] Method 3 skipped: RAPIDAPI_KEY not set');
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // METHOD 4 — yt-dlp with cookies file (full auth fallback)
+  // ══════════════════════════════════════════════════════════════════════════
+  try {
+    console.log('[Reel] Method 4: yt-dlp + cookies file');
+    const cookiesFile = COOKIES_PATH || '/tmp/instagram_cookies.txt';
+
+    if (!fs.existsSync(cookiesFile)) throw new Error(`Cookies file not found at ${cookiesFile}`);
+
+    const args = [
+      ...BASE_YTDLP_ARGS,
+      '--cookies', cookiesFile,
+      cleanUrl,
+    ];
+    const { stdout } = await runYtDlp(args, { timeoutMs: 45000 });
+    const { videoUrl, thumbnailUrl, title } = parseYtDlpReelOutput(stdout);
+
+    if (videoUrl && videoUrl.startsWith('http')) {
+      console.log('[Reel] Method 4 succeeded (cookies)');
+      return res.json({ videoUrl, type: 'video', title, thumbnailUrl });
+    }
+    console.warn('[Reel] Method 4: parsed empty video URL');
+  } catch (err4) {
+    console.warn('[Reel] Method 4 failed:', (err4.stderr || err4.err?.message || err4.message || '').slice(0, 200));
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ALL METHODS EXHAUSTED — return a structured error
+  // ══════════════════════════════════════════════════════════════════════════
+  console.error('[Reel] All 4 extraction methods failed for:', cleanUrl);
+  return res.status(503).json({
+    error: 'Could Not Download Reel',
+    message: 'We tried multiple methods to download this Reel but all failed. Instagram may be rate-limiting us, the reel might be private, or the link could be invalid. Please try again later.',
+  });
 });
 
 // ============================================================
