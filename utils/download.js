@@ -212,9 +212,13 @@ async function startExpoDownload(url, fileName, onProgress, meta) {
     finalUri = permanentPath;
 
     // Step 3: Add to gallery using the permanent path — only asks ONCE ever
-    // because we are creating not modifying an existing external file
+    // because we are creating not modifying an existing external file.
+    // On Android, we skip createAlbumAsync. Adding to an album requires moving the asset,
+    // which triggers the Android 11+ scoped storage "modify" permission prompt on every download.
     const asset = await MediaLibrary.createAssetAsync(permanentPath);
-    await MediaLibrary.createAlbumAsync('SaveX', asset, false);
+    if (Platform.OS !== 'android') {
+      await MediaLibrary.createAlbumAsync('SaveX', asset, false);
+    }
 
     // Clean up cache
     await FileSystem.deleteAsync(result.uri, { idempotent: true });

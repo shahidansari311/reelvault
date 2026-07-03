@@ -6,6 +6,7 @@ const { exec } = require('child_process');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const cron = require('node-cron');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -28,11 +29,16 @@ function getInstagramCookiesPath() {
       fs.copyFileSync(RENDER_SECRET, COOKIE_FILE);
       return COOKIE_FILE;
     }
+    // Local fallback with copy to /tmp to prevent snap permission denied errors
+    const localPath = path.join(__dirname, 'instagram_cookies.txt');
+    if (fs.existsSync(localPath)) {
+      fs.copyFileSync(localPath, COOKIE_FILE);
+      return COOKIE_FILE;
+    }
   } catch (e) {
     console.error('Instagram Cookie Handler Error:', e.message);
   }
-  const localPath = path.join(__dirname, 'instagram_cookies.txt');
-  return fs.existsSync(localPath) ? localPath : null;
+  return null;
 }
 
 const COOKIES_PATH = getInstagramCookiesPath();
@@ -385,6 +391,12 @@ function getCookiesPath() {
       fs.copyFileSync(RENDER_SECRET_2, COOKIE_FILE);
       return COOKIE_FILE;
     }
+    // Priority 3: Local file fallback with copy to /tmp to prevent snap permission denied errors
+    const localPath = path.join(__dirname, 'youtube_cookies.txt');
+    if (fs.existsSync(localPath)) {
+      fs.copyFileSync(localPath, COOKIE_FILE);
+      return COOKIE_FILE;
+    }
   } catch (e) {
     console.error('Cookie Handler Error:', e.message);
   }
@@ -468,9 +480,6 @@ const getCommonArgs = () => {
   
   // Automatically try to use node for javascript runtimes if available (fixes n-sig challenges)
   args.push('--js-runtimes', 'node');
-  
-  // Explicitly allow remote component for External JS challenge solver (fixes new YouTube algo)
-  args.push('--remote-components', 'ejs:github');
 
   const cookies = getCookiesPath();
   if (cookies) {
@@ -584,7 +593,7 @@ app.post('/youtube/info', async (req, res) => {
     const { stdout } = await runYtDlp([
       '--dump-json',
       '--no-playlist',
-      '--extractor-args', 'youtube:player_client=android,web',
+      '--extractor-args', 'youtube:player_client=android',
       ...getCommonArgs(),
       cleanUrl
     ], { timeoutMs: 180000 });
@@ -646,6 +655,8 @@ app.get('/youtube/stream', (req, res) => {
       '-q', // quiet (no progress output in stdout)
       '--no-warnings', // strictly suppress warnings
       '--no-playlist',
+      '--extractor-args', 'youtube:player_client=android',
+      '--buffer-size', '16K',
       ...getCommonArgs(),
       '-f', format,
       '-o', '-', // Output directly to stdout
@@ -778,8 +789,6 @@ app.post('/download/reel', async (req, res) => {
     '--add-header', 'Accept-Language: en-US,en;q=0.9',
     '--add-header', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     '--referer', 'https://www.instagram.com/',
-    '--sleep-interval', '3',
-    '--max-sleep-interval', '6',
   ];
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -1064,6 +1073,13 @@ app.get('/stories/:username', async (req, res) => {
   
   console.log(`Starting Story extraction for user: ${target}`);
   
+  if (!COOKIES_PATH || !fs.existsSync(COOKIES_PATH)) {
+    return res.status(401).json({
+      error: 'Instagram Session Required',
+      message: 'Story downloads require a valid Instagram session cookie. Please configure `IG_COOKIES` in your environment variables or upload `instagram_cookies.txt`.'
+    });
+  }
+
   const storyUrl = `https://www.instagram.com/stories/${target}/`;
 
   // Direct yt-dlp extraction (Cobalt instances are currently dead)
@@ -1074,19 +1090,13 @@ app.get('/stories/:username', async (req, res) => {
     '--no-check-certificates',
     '--geo-bypass',
     '--format', 'best[ext=mp4]/best',
+    '--cookies', COOKIES_PATH,
     '--add-header', 'Accept-Language: en-US,en;q=0.9',
     '--add-header', 'Sec-Ch-Ua: "Not A(Brand";v="99", "Google Chrome";v="121", "Chromium";v="121"',
     '--user-agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-    '--referer', 'https://www.instagram.com/'
+    '--referer', 'https://www.instagram.com/',
+    storyUrl
   ];
-
-  if (COOKIES_PATH && fs.existsSync(COOKIES_PATH)) {
-    args.push('--cookies', COOKIES_PATH);
-  } else {
-    args.push('--cookies-from-browser', 'chrome', '--cookies-from-browser', 'edge', '--cookies-from-browser', 'brave');
-  }
-
-  args.push(storyUrl);
 
   try {
     const { stdout } = await runYtDlp(args, { timeoutMs: 60000 });
@@ -1128,7 +1138,11 @@ app.get('/stories/:username', async (req, res) => {
     let subMsg = 'This user hasn\'t posted any stories in the last 24 hours. Stories only last 24 hours, so check back later!';
     let statusCode = 404;
 
-    if (stderr.includes('Login required') || stderr.includes('login_required') || stderr.includes('Private') || stderr.includes('private') || stderr.includes('login required')) {
+    if (stderr.includes('Login required') || stderr.includes('login_required') || stderr.includes('login required')) {
+      errorMsg = 'Instagram Session Expired';
+      subMsg = 'The Instagram login session cookie has expired or the account has been limited. Please generate new cookies and update the backend settings.';
+      statusCode = 401;
+    } else if (stderr.includes('Private') || stderr.includes('private')) {
       errorMsg = 'This Account is Private';
       subMsg = 'This is a private account, so their stories are hidden. You can only view stories from public accounts.';
       statusCode = 403;
@@ -1136,7 +1150,7 @@ app.get('/stories/:username', async (req, res) => {
       errorMsg = 'User Does Not Exist';
       subMsg = 'We couldn\'t find anyone with that username on Instagram. Please check the spelling and try again.';
       statusCode = 404;
-    } else if (stderr.includes('Sign in') || stderr.includes('Rate limit') || stderr.includes('429') || stderr.includes('too many') || stderr.includes('login required')) {
+    } else if (stderr.includes('Sign in') || stderr.includes('Rate limit') || stderr.includes('429') || stderr.includes('too many')) {
       errorMsg = 'Too Many Requests';
       subMsg = 'Instagram is temporarily limiting our access. Please wait a minute or two and try again.';
       statusCode = 429;
@@ -1235,8 +1249,55 @@ app.get('/status', (req, res) => {
   });
 });
 
+const deleteOldFiles = (dir) => {
+  try {
+    if (!fs.existsSync(dir)) return;
+    const files = fs.readdirSync(dir);
+    const now = Date.now();
+    const oneHour = 60 * 60 * 1000;
+    
+    for (const file of files) {
+      const filePath = path.join(dir, file);
+      const stat = fs.statSync(filePath);
+      if (now - stat.mtimeMs > oneHour) {
+        fs.unlinkSync(filePath);
+        console.log(`[Cleanup] Deleted file: ${filePath}`);
+      }
+    }
+  } catch (err) {
+    console.error(`[Cleanup] Error cleaning directory ${dir}:`, err.message);
+  }
+};
+
+// Keep-Alive Self-Ping Cron Job (every 14 minutes)
+cron.schedule('*/14 * * * *', async () => {
+  const url = process.env.RENDER_EXTERNAL_URL;
+  if (!url) {
+    console.log('[Keep-Alive] RENDER_EXTERNAL_URL env var not set. Skipping self-ping.');
+    return;
+  }
+  try {
+    console.log(`[Keep-Alive] Sending ping to self: ${url}/ping`);
+    const res = await axios.get(`${url}/ping`);
+    console.log(`[Keep-Alive] Self-ping response: ${res.status}`);
+  } catch (err) {
+    console.error('[Keep-Alive] Self-ping failed:', err.message);
+  }
+});
+
+// Cleanup Cron Job (every hour)
+cron.schedule('0 * * * *', () => {
+  console.log('[Cleanup] Running hourly download folder cleanup...');
+  deleteOldFiles(YT_DOWNLOADS_DIR);
+  deleteOldFiles(IG_DOWNLOADS_DIR);
+});
+
 app.listen(PORT, HOST, () => {
   console.log(`SaveX Server active on ${HOST}:${PORT}`);
+  
+  // Initial cleanup on launch
+  deleteOldFiles(YT_DOWNLOADS_DIR);
+  deleteOldFiles(IG_DOWNLOADS_DIR);
   
   // Diagnostics
   exec('yt-dlp --version', (err, stdout) => console.log('YT-DLP Version:', stdout?.trim()));
