@@ -593,7 +593,7 @@ app.post('/youtube/info', async (req, res) => {
     const { stdout } = await runYtDlp([
       '--dump-json',
       '--no-playlist',
-      '--extractor-args', 'youtube:player_client=android',
+      '--extractor-args', 'youtube:player_client=android,web',
       ...getCommonArgs(),
       cleanUrl
     ], { timeoutMs: 180000 });
@@ -655,7 +655,7 @@ app.get('/youtube/stream', (req, res) => {
       '-q', // quiet (no progress output in stdout)
       '--no-warnings', // strictly suppress warnings
       '--no-playlist',
-      '--extractor-args', 'youtube:player_client=android',
+      '--extractor-args', 'youtube:player_client=android,web',
       '--buffer-size', '16K',
       ...getCommonArgs(),
       '-f', format,
@@ -1033,7 +1033,12 @@ app.post('/download/post', async (req, res) => {
     let subMsg = 'We couldn\'t get this post. The link might be broken or the post may no longer exist.';
     let statusCode = 500;
 
-    if (stderr.includes('Login required') || stderr.includes('Private') || stderr.includes('private') || stderr.includes('login_required') || stderr.includes('login required')) {
+    if (stderr.includes('Login required') || stderr.includes('login_required') || stderr.includes('login required') ||
+        stderr.includes('unreachable') || stderr.includes('cookies for the authentication') || stderr.includes('cookies-from-browser')) {
+      errorMsg = 'Instagram Session Expired';
+      subMsg = 'The Instagram login session cookie has expired or the account has been limited. Please generate new cookies and update the backend settings.';
+      statusCode = 401;
+    } else if (stderr.includes('Private') || stderr.includes('private')) {
       errorMsg = 'This Account is Private';
       subMsg = 'This post belongs to a private account. We can only download from public accounts.';
       statusCode = 403;
@@ -1138,7 +1143,8 @@ app.get('/stories/:username', async (req, res) => {
     let subMsg = 'This user hasn\'t posted any stories in the last 24 hours. Stories only last 24 hours, so check back later!';
     let statusCode = 404;
 
-    if (stderr.includes('Login required') || stderr.includes('login_required') || stderr.includes('login required')) {
+    if (stderr.includes('Login required') || stderr.includes('login_required') || stderr.includes('login required') ||
+        stderr.includes('unreachable') || stderr.includes('cookies for the authentication') || stderr.includes('cookies-from-browser')) {
       errorMsg = 'Instagram Session Expired';
       subMsg = 'The Instagram login session cookie has expired or the account has been limited. Please generate new cookies and update the backend settings.';
       statusCode = 401;
