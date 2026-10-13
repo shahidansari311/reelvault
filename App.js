@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, StyleSheet, Alert, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LayoutGrid, Video, Play, Eye } from 'lucide-react-native';
-import * as MediaLibrary from 'expo-media-library';
+import { getMediaLibrary } from './utils/mediaLibrary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 
@@ -42,17 +42,23 @@ export default function App() {
         await setupNotificationChannel();
         await requestNotificationPermission();
 
-        // Check if already granted (no popup)
-        const { status: existing } = await MediaLibrary.getPermissionsAsync(true);
-        if (existing !== 'granted') {
-          // Only show the system dialog if we've never asked before
-          const hasAsked = await AsyncStorage.getItem('hasAskedMediaPerm');
-          if (!hasAsked) {
-            await MediaLibrary.requestPermissionsAsync(true);
+        // Check if already granted (no popup). Skipped entirely where the
+        // native media-library module is missing (old Expo Go / stale build).
+        const MediaLibrary = getMediaLibrary();
+        if (!MediaLibrary) {
+          await AsyncStorage.setItem('hasAskedMediaPerm', 'true');
+        } else {
+          const { status: existing } = await MediaLibrary.getPermissionsAsync(true);
+          if (existing !== 'granted') {
+            // Only show the system dialog if we've never asked before
+            const hasAsked = await AsyncStorage.getItem('hasAskedMediaPerm');
+            if (!hasAsked) {
+              await MediaLibrary.requestPermissionsAsync(true);
+              await AsyncStorage.setItem('hasAskedMediaPerm', 'true');
+            }
+          } else {
             await AsyncStorage.setItem('hasAskedMediaPerm', 'true');
           }
-        } else {
-          await AsyncStorage.setItem('hasAskedMediaPerm', 'true');
         }
 
         // Ask for download folder ONCE on first launch

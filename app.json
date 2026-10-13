@@ -6,23 +6,15 @@
     "orientation": "portrait",
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0F0F0F"
-    },
+    "icon": "./assets/logo.png",
     "ios": {
-      "supportsTablet": true,
-      "jsEngine": "hermes"
+      "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#0F0F0F"
       },
-      "edgeToEdgeEnabled": true,
-      "jsEngine": "hermes",
       "permissions": [
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
@@ -52,12 +44,30 @@
         {
           "action": "VIEW",
           "data": [
-            { "scheme": "https", "host": "www.instagram.com" },
-            { "scheme": "https", "host": "instagram.com" },
-            { "scheme": "https", "host": "www.youtube.com" },
-            { "scheme": "https", "host": "youtube.com" },
-            { "scheme": "https", "host": "youtu.be" },
-            { "scheme": "https", "host": "m.youtube.com" }
+            {
+              "scheme": "https",
+              "host": "www.instagram.com"
+            },
+            {
+              "scheme": "https",
+              "host": "instagram.com"
+            },
+            {
+              "scheme": "https",
+              "host": "www.youtube.com"
+            },
+            {
+              "scheme": "https",
+              "host": "youtube.com"
+            },
+            {
+              "scheme": "https",
+              "host": "youtu.be"
+            },
+            {
+              "scheme": "https",
+              "host": "m.youtube.com"
+            }
           ],
           "category": [
             "DEFAULT",
@@ -92,7 +102,26 @@
         {
           "android": {
             "enableProguardInReleaseBuilds": true,
-            "enableShrinkResourcesInReleaseBuilds": true
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "enableMinifyInReleaseBuilds": true
+          }
+        }
+      ],
+      "expo-status-bar",
+      "expo-audio",
+      "expo-video",
+      "expo-asset",
+      "./plugins/withNativeDownload",
+      "./plugins/withAbiSplitApk",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/logo.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#0F0F0F",
+          "dark": {
+            "image": "./assets/logo.png",
+            "backgroundColor": "#0F0F0F"
           }
         }
       ]

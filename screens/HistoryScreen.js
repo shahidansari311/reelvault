@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { 
   ArrowLeft,
   Play, 
@@ -31,25 +31,38 @@ export default function HistoryScreen({ navigation }) {
     }
   }, [isFocused]);
 
+  const lastVerifiedRef = React.useRef(0);
+
   const loadHistory = async () => {
     const data = await getHistory();
-    
-    // Check local file existence
-    const verifiedData = await Promise.all(
-      data.map(async (item) => {
-        try {
-          if (item.filepath) {
-            const info = await FileSystem.getInfoAsync(item.filepath);
-            if (info.exists !== !!item.file_exists) {
-              await updateFileExists(item.id, info.exists);
-              return { ...item, file_exists: info.exists ? 1 : 0 };
+
+    // File-existence verification hits the disk for every row — throttle it
+    // to at most once per 60s; list reads stay instant on quick revisits.
+    if (Date.now() - lastVerifiedRef.current < 60 * 1000) {
+      setHistory(data);
+      return;
+    }
+    lastVerifiedRef.current = Date.now();
+
+    // Check local file existence (bounded concurrency to avoid I/O spikes)
+    const CONCURRENCY = 8;
+    const verifiedData = [...data];
+    for (let i = 0; i < verifiedData.length; i += CONCURRENCY) {
+      await Promise.all(
+        verifiedData.slice(i, i + CONCURRENCY).map(async (item, offset) => {
+          try {
+            if (item.filepath) {
+              const info = await FileSystem.getInfoAsync(item.filepath);
+              if (info.exists !== !!item.file_exists) {
+                await updateFileExists(item.id, info.exists);
+                verifiedData[i + offset] = { ...item, file_exists: info.exists ? 1 : 0 };
+              }
             }
-          }
-        } catch (e) {}
-        return item;
-      })
-    );
-    
+          } catch (e) {}
+        })
+      );
+    }
+
     setHistory(verifiedData);
   };
 
@@ -221,6 +234,11 @@ export default function HistoryScreen({ navigation }) {
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          removeClippedSubviews
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          updateCellsBatchingPeriod={50}
         />
       )}
     </View>

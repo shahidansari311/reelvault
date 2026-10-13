@@ -11,6 +11,9 @@ node_modules/
 .env.production.local
 
 # 🔑 Secrets & Session Keys
+# Local EAS build scripts embed an EXPO_TOKEN — never commit them.
+scripts/build-dev-apk.sh
+scripts/build-apk.sh
 *instagram_cookies.txt
 backend/instagram_cookies.txt
 backend/youtube_cookies.txt

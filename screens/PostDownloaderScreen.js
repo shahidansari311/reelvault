@@ -11,7 +11,6 @@ import {
   Dimensions,
   ScrollView,
   Animated,
-  FlatList,
   Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

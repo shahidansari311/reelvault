@@ -42,9 +42,22 @@ const STORY_HEIGHT = COLUMN_WIDTH * 1.5;
 /**
  * CachedImage — downloads thumbnail to local cache to prevent black screen
  * from expired Instagram CDN URLs.
+ * Uses a stable filename derived from the URL hash + an in-memory map,
+ * so revisits resolve instantly without re-downloading (and without
+ * leaking a new random file into the cache dir on every mount).
  */
+const thumbMemoryCache = new Map();
+
+const thumbFileNameFor = (uri) => {
+  let hash = 0;
+  for (let i = 0; i < uri.length; i++) {
+    hash = (hash * 31 + uri.charCodeAt(i)) | 0;
+  }
+  return `thumb_${(hash >>> 0).toString(36)}.jpg`;
+};
+
 const CachedImage = React.memo(({ uri, style, resizeMode = 'cover' }) => {
-  const [cachedUri, setCachedUri] = React.useState(null);
+  const [cachedUri, setCachedUri] = React.useState(() => thumbMemoryCache.get(uri) || null);
 
   React.useEffect(() => {
     if (!uri) return;
@@ -52,10 +65,17 @@ const CachedImage = React.memo(({ uri, style, resizeMode = 'cover' }) => {
 
     const cacheThumbnail = async () => {
       try {
-        const fileName = 'thumb_' + Math.random().toString(36).slice(2) + '.jpg';
+        const fileName = thumbFileNameFor(uri);
         const localPath = FileSystem.cacheDirectory + fileName;
-        const { uri: localUri } = await FileSystem.downloadAsync(uri, localPath);
-        if (!cancelled) setCachedUri(localUri);
+        const info = await FileSystem.getInfoAsync(localPath);
+        if (!info.exists) {
+          const { uri: localUri } = await FileSystem.downloadAsync(uri, localPath);
+          thumbMemoryCache.set(uri, localUri);
+          if (!cancelled) setCachedUri(localUri);
+        } else {
+          thumbMemoryCache.set(uri, localPath);
+          if (!cancelled) setCachedUri(localPath);
+        }
       } catch (e) {
         if (!cancelled) {
           setCachedUri(uri);
@@ -528,6 +548,11 @@ export default function StoryViewerScreen({ navigation, route }) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.listContent}
+        removeClippedSubviews
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={5}
+        updateCellsBatchingPeriod={50}
       />
 
       {/* Modal Preview */}

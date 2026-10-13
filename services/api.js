@@ -13,7 +13,16 @@ const api = axios.create({
 
 const CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes
 
+// In-memory front cache: avoids AsyncStorage JSON round-trips for
+// repeat lookups within the same session.
+const memoryCache = new Map();
+
 const getCache = async (key) => {
+  const mem = memoryCache.get(key);
+  if (mem && Date.now() - mem.timestamp < CACHE_EXPIRY) {
+    return mem.data;
+  }
+  if (mem) memoryCache.delete(key);
   try {
     const cached = await AsyncStorage.getItem(key);
     if (!cached) return null;
@@ -22,6 +31,7 @@ const getCache = async (key) => {
       await AsyncStorage.removeItem(key);
       return null;
     }
+    memoryCache.set(key, { data, timestamp });
     return data;
   } catch (e) {
     return null;
@@ -29,6 +39,7 @@ const getCache = async (key) => {
 };
 
 const setCache = async (key, data) => {
+  memoryCache.set(key, { data, timestamp: Date.now() });
   try {
     const cacheData = JSON.stringify({ data, timestamp: Date.now() });
     await AsyncStorage.setItem(key, cacheData);

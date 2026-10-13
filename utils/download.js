@@ -1,6 +1,6 @@
 // SDK 54+: createDownloadResumable lives on the legacy API; main entry throws if used from non-legacy import.
 import * as FileSystem from 'expo-file-system/legacy';
-import * as MediaLibrary from 'expo-media-library';
+import { getMediaLibrary } from './mediaLibrary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert, Linking, NativeModules, NativeEventEmitter, Platform } from 'react-native';
 
@@ -87,7 +87,17 @@ export const downloadFile = async (url, fileName, onProgress, meta = null) => {
       return await startNativeBackgroundDownload(url, fileName, onProgress, meta);
     }
 
-    // Expo fallback path — check if permission was already granted at launch
+    // Expo fallback path — needs the native media-library module.
+    const MediaLibrary = getMediaLibrary();
+    if (!MediaLibrary) {
+      Alert.alert(
+        'Update Required',
+        'Saving to the gallery needs a fresh app build. Please install the latest development build.'
+      );
+      return false;
+    }
+
+    // Check if permission was already granted at launch
     const { status } = await MediaLibrary.getPermissionsAsync(true);
     if (status !== 'granted') {
       Alert.alert(
@@ -257,6 +267,8 @@ async function startExpoDownload(url, fileName, onProgress, meta) {
     finalUri = permanentPath;
 
     // Step 3: Add to gallery using the permanent path — only asks ONCE ever
+    // (MediaLibrary was already resolved in downloadFile before reaching here)
+    const MediaLibrary = getMediaLibrary();
     const asset = await MediaLibrary.createAssetAsync(permanentPath);
     if (Platform.OS !== 'android') {
       await MediaLibrary.createAlbumAsync('SaveX', asset, false);
@@ -286,7 +298,7 @@ async function startExpoDownload(url, fileName, onProgress, meta) {
     console.warn('Could not move to SaveX album, but file is saved.', albumErr);
     // Fallback: try creating asset directly from result if copy fails
     try {
-      if (finalUri === result.uri) {
+      if (finalUri === result.uri && MediaLibrary) {
         await MediaLibrary.createAssetAsync(result.uri);
       }
     } catch(e) {

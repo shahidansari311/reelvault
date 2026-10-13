@@ -11,7 +11,8 @@ import {
   Animated,
   PanResponder,
 } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { useEvent } from 'expo';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Play,
@@ -34,7 +35,7 @@ const SLIDER_HEIGHT = 36;
 
 /**
  * Premium dark video player with sunflower amber custom controls.
- * Uses expo-av Video under the hood.
+ * Uses expo-video (SDK 57) under the hood.
  */
 export default function VideoPlayer({
   uri,
@@ -46,22 +47,102 @@ export default function VideoPlayer({
   style,
   accentColor = COLORS.primary, // Default sunflower amber #FFC107
 }) {
-  const videoRef = useRef(null);
   const controlsTimeout = useRef(null);
 
-  const [status, setStatus] = useState({});
   const [showControls, setShowControls] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
-  const [videoNaturalSize, setVideoNaturalSize] = useState(null);
   const [isSeeking, setIsSeeking] = useState(false);
   const [seekPosition, setSeekPosition] = useState(0);
   const [sliderWidth, setSliderWidth] = useState(SCREEN_WIDTH - 120);
+  const [didFinish, setDidFinish] = useState(false);
 
   // Animations
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   const centerIconScale = useRef(new Animated.Value(0)).current;
   const centerIconOpacity = useRef(new Animated.Value(0)).current;
   const shimmerAnim = useRef(new Animated.Value(0.4)).current;
+
+  // expo-video player. Re-created when uri changes.
+  const player = useVideoPlayer(uri ? { uri } : null, (p) => {
+    p.loop = isLooping;
+    p.timeUpdateEventInterval = 0.5;
+    if (shouldPlay && uri) {
+      p.play();
+    }
+  });
+
+  // Keep loop flag in sync
+  useEffect(() => {
+    if (player) player.loop = isLooping;
+  }, [player, isLooping]);
+
+  // React to shouldPlay changes
+  useEffect(() => {
+    if (!player) return;
+    try {
+      if (shouldPlay) {
+        if (didFinish && !isLooping) {
+          player.replay();
+        } else if (!player.playing) {
+          player.play();
+        }
+      } else if (player.playing) {
+        player.pause();
+      }
+    } catch (e) {
+      console.warn('VideoPlayer play/pause error:', e);
+    }
+  }, [shouldPlay, player, didFinish, isLooping]);
+
+  // React to URI changes (useVideoPlayer does not auto-swap the source)
+  const lastUri = useRef(uri);
+  useEffect(() => {
+    if (player && uri && lastUri.current !== uri) {
+      lastUri.current = uri;
+      try {
+        player.replace({ uri });
+        if (shouldPlay) player.play();
+      } catch (e) {
+        console.warn('VideoPlayer source replace error:', e);
+      }
+    }
+  }, [uri, player, shouldPlay]);
+
+  // Live player state via events
+  const playingChange = useEvent(player, 'playingChange', {
+    isPlaying: player?.playing ?? false,
+  });
+  const statusChange = useEvent(player, 'statusChange', {
+    status: player?.status ?? 'loading',
+  });
+  const timeUpdate = useEvent(player, 'timeUpdate', {
+    currentTime: 0,
+    bufferedPosition: 0,
+  });
+  const mutedChange = useEvent(player, 'mutedChange', {
+    muted: player?.muted ?? false,
+  });
+
+  // playToEnd clears when looping, otherwise marks finished
+  useEvent(player, 'playToEnd', () => {
+    if (!player?.loop) setDidFinish(true);
+  });
+
+  // Reset finished flag when playback resumes
+  useEffect(() => {
+    if (playingChange?.isPlaying) setDidFinish(false);
+  }, [playingChange?.isPlaying]);
+
+  // Derived state (same names as before so the UI below is untouched)
+  const isPlaying = playingChange?.isPlaying ?? false;
+  const status = statusChange?.status ?? 'loading';
+  const isLoaded = status === 'readyToPlay';
+  const isBuffering = status === 'loading';
+  const isMuted = mutedChange?.muted ?? false;
+  const duration = player?.duration ?? 0;
+  const livePosition = timeUpdate?.currentTime ?? player?.currentTime ?? 0;
+  const currentTime = isSeeking ? seekPosition : livePosition;
+  const progress = duration > 0 ? currentTime / duration : 0;
 
   // Shimmer pulse animation for loading state
   useEffect(() => {
@@ -75,21 +156,15 @@ export default function VideoPlayer({
     return () => pulse.stop();
   }, [shimmerAnim]);
 
-  // Derived state
-  const isPlaying = status.isPlaying || false;
-  const isBuffering = status.isBuffering || false;
-  const isLoaded = status.isLoaded || false;
-  const currentTime = isSeeking ? seekPosition : (status.positionMillis || 0) / 1000;
-  const duration = (status.durationMillis || 0) / 1000;
-  const progress = duration > 0 ? currentTime / duration : 0;
-  const isMuted = status.isMuted || false;
-  const didFinish = status.didJustFinish || false;
-
-  const isPortrait = videoNaturalSize
-    ? videoNaturalSize.height > videoNaturalSize.width
-    : true;
-
   // ─── Controls Visibility ───────────────────────────────────────
+  const hideControls = useCallback(() => {
+    Animated.timing(controlsOpacity, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => setShowControls(false));
+  }, [controlsOpacity]);
+
   const resetControlsTimer = useCallback(() => {
     if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
     if (isPlaying && !isSeeking) {
@@ -97,7 +172,7 @@ export default function VideoPlayer({
         hideControls();
       }, CONTROLS_TIMEOUT);
     }
-  }, [isPlaying, isSeeking]);
+  }, [isPlaying, isSeeking, hideControls]);
 
   const showControlsAnimated = useCallback(() => {
     setShowControls(true);
@@ -107,15 +182,7 @@ export default function VideoPlayer({
       useNativeDriver: true,
     }).start();
     resetControlsTimer();
-  }, [resetControlsTimer]);
-
-  const hideControls = useCallback(() => {
-    Animated.timing(controlsOpacity, {
-      toValue: 0,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => setShowControls(false));
-  }, []);
+  }, [resetControlsTimer, controlsOpacity]);
 
   const toggleControls = useCallback(() => {
     if (showControls) {
@@ -153,42 +220,60 @@ export default function VideoPlayer({
     ]).start();
   };
 
-  const togglePlayPause = async () => {
-    if (!videoRef.current || !isLoaded) return;
-    if (didFinish && !isLooping) {
-      await videoRef.current.replayAsync();
-    } else if (isPlaying) {
-      await videoRef.current.pauseAsync();
-    } else {
-      await videoRef.current.playAsync();
+  const togglePlayPause = () => {
+    if (!player || !isLoaded) return;
+    try {
+      if (didFinish && !isLooping) {
+        player.replay();
+      } else if (isPlaying) {
+        player.pause();
+      } else {
+        player.play();
+      }
+    } catch (e) {
+      console.warn('togglePlayPause error:', e);
     }
     flashCenterIcon();
     resetControlsTimer();
   };
 
-  const seekBy = async (seconds) => {
-    if (!videoRef.current || !isLoaded) return;
-    const newPos = Math.max(0, Math.min(duration, currentTime + seconds)) * 1000;
-    await videoRef.current.setPositionAsync(newPos);
+  const seekBy = (seconds) => {
+    if (!player || !isLoaded) return;
+    try {
+      player.seekBy(seconds);
+    } catch (e) {
+      console.warn('seekBy error:', e);
+    }
     showControlsAnimated();
   };
 
-  const seekTo = async (seconds) => {
-    if (!videoRef.current || !isLoaded) return;
+  const seekTo = (seconds) => {
+    if (!player || !isLoaded) return;
     setIsSeeking(false);
-    await videoRef.current.setPositionAsync(seconds * 1000);
+    try {
+      player.currentTime = Math.max(0, Math.min(duration, seconds));
+    } catch (e) {
+      console.warn('seekTo error:', e);
+    }
     resetControlsTimer();
   };
 
-  const toggleMute = async () => {
-    if (!videoRef.current || !isLoaded) return;
-    await videoRef.current.setIsMutedAsync(!isMuted);
+  const toggleMute = () => {
+    if (!player || !isLoaded) return;
+    try {
+      player.muted = !isMuted;
+    } catch (e) {
+      console.warn('toggleMute error:', e);
+    }
   };
 
-  const replay = async () => {
-    if (!videoRef.current || !isLoaded) return;
-    await videoRef.current.setPositionAsync(0);
-    await videoRef.current.playAsync();
+  const replay = () => {
+    if (!player || !isLoaded) return;
+    try {
+      player.replay();
+    } catch (e) {
+      console.warn('replay error:', e);
+    }
     showControlsAnimated();
   };
 
@@ -248,20 +333,12 @@ export default function VideoPlayer({
       {/* Video Layer */}
       <TouchableWithoutFeedback onPress={toggleControls}>
         <View style={styles.videoLayer}>
-          <Video
-            ref={videoRef}
-            source={{ uri }}
+          <VideoView
+            player={player}
             style={styles.video}
-            resizeMode={fullscreen ? ResizeMode.CONTAIN : (isPortrait ? ResizeMode.CONTAIN : ResizeMode.COVER)}
-            shouldPlay={shouldPlay}
-            isLooping={isLooping}
-            isMuted={false}
-            onPlaybackStatusUpdate={(s) => setStatus(s)}
-            onReadyForDisplay={(data) => {
-              if (data.naturalSize) {
-                setVideoNaturalSize(data.naturalSize);
-              }
-            }}
+            contentFit={fullscreen ? 'contain' : 'cover'}
+            nativeControls={false}
+            allowsFullscreen={false}
           />
         </View>
       </TouchableWithoutFeedback>
