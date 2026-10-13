@@ -1,0 +1,45 @@
+# EAS Build upload filter. Mirrors .gitignore plus build-only exclusions so
+# uploads stay small and secrets never leave this machine.
+# (EAS uses this file instead of .gitignore when present.)
+
+# --- mirrored from .gitignore ---
+.env
+node_modules/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+scripts/build-dev-apk.sh
+scripts/build-apk.sh
+*instagram_cookies.txt
+backend/instagram_cookies.txt
+backend/youtube_cookies.txt
+auth_token.json
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+*.pem
+.env*.local
+*.tsbuildinfo
+/ios
+/android
+
+# --- build-only exclusions (not needed to compile the app) ---
+backend/
+cookies.txt
+.vscode/
+*.backup
+*.save

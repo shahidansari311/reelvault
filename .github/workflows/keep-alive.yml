@@ -1,0 +1,22 @@
+# Keeps the Render free-tier backend from sleeping (spins down after
+# ~15 min idle). Pings /ping every 10 minutes. Zero cost, no extra accounts.
+# Manual runs: Actions tab → "Keep backend awake" → Run workflow.
+#
+# NOTE: GitHub pauses scheduled workflows on repos with 60+ days of zero
+# activity. If pings ever stop, either push any commit or set the same URL
+# on https://cron-job.org (free, 10-min interval) as a backup.
+
+name: Keep backend awake
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping backend
+        run: curl -fsS --max-time 90 --retry 2 https://reelvault-backend.onrender.com/ping
