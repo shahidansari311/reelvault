@@ -21,19 +21,13 @@ import {
   Code,
   Globe,
   AtSign,
-  Mail,
-  Phone,
-  MapPin,
   Send,
   Heart,
-  Code2,
   Star,
   MessageSquare,
   ExternalLink,
   User,
-  Briefcase,
-  Folder,
-  Trophy,
+  Code2,
   ChevronRight,
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
@@ -80,31 +74,6 @@ const SocialCard = ({ icon: Icon, label, sublabel, url, color, index }) => {
   );
 };
 
-// ─── Contact Info Pill ───
-const ContactPill = ({ icon: Icon, text, onPress }) => (
-  <TouchableOpacity style={styles.contactPill} onPress={onPress} activeOpacity={0.7}>
-    <Icon color={COLORS.primary} size={14} />
-    <Text style={styles.contactPillText} numberOfLines={1}>{text}</Text>
-  </TouchableOpacity>
-);
-
-// ─── Stat Card ───
-const StatCard = ({ label, value, icon: Icon }) => (
-  <View style={styles.statCard}>
-    <Icon color={COLORS.primary} size={20} />
-    <Text style={styles.statValue}>{value}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
-  </View>
-);
-
-// ─── Highlight Bullet ───
-const Bullet = ({ text }) => (
-  <View style={styles.bulletRow}>
-    <View style={styles.bulletDot} />
-    <Text style={styles.bulletText}>{text}</Text>
-  </View>
-);
-
 export default function AboutScreen({ navigation }) {
   const [feedbackName, setFeedbackName] = useState('');
   const [feedbackEmail, setFeedbackEmail] = useState('');
@@ -130,11 +99,6 @@ export default function AboutScreen({ navigation }) {
     { icon: Globe, label: 'Portfolio', sublabel: 'View My Work', url: 'https://shahidansari.vercel.app/', color: '#8B5CF6' },
     { icon: AtSign, label: 'X (Twitter)', sublabel: '@Shahid_310_', url: 'https://x.com/Shahid_310_', color: '#1DA1F2' },
     { icon: Link, label: 'Instagram', sublabel: '@_shahid_129_', url: 'https://instagram.com/_shahid_129_', color: '#E1306C' },
-  ];
-
-  const skills = [
-    'React Native', 'Expo', 'TypeScript', 'Node.js', 'Express',
-    'MongoDB', 'PostgreSQL', 'Prisma', 'REST APIs', 'Docker', 'AWS', 'Git',
   ];
 
   const handleSubmitFeedback = async () => {
@@ -224,7 +188,7 @@ export default function AboutScreen({ navigation }) {
           </Text>
         </Animated.View>
 
-        {/* Developer Hero Card */}
+        {/* Developer — name only */}
         <Animated.View style={[styles.heroCard, { opacity: heroOpacity }]}>
           <View style={styles.sectionHeader}>
             <User color={COLORS.primary} size={20} />
@@ -245,80 +209,7 @@ export default function AboutScreen({ navigation }) {
           </View>
 
           <Text style={styles.heroName}>Shahid Ansari</Text>
-          <Text style={styles.heroRole}>Full-Stack Developer</Text>
-          <Text style={styles.heroSub}>3rd-year CS • PERN / MERN • React Native</Text>
-
-          {/* Contact Pills */}
-          <View style={styles.contactRow}>
-            <ContactPill icon={MapPin} text="Ghaziabad, India" onPress={() => {}} />
-            <ContactPill icon={Phone} text="+91-8858501783" onPress={() => Linking.openURL('tel:+918858501783')} />
-          </View>
-          <View style={styles.contactRow}>
-            <ContactPill icon={Mail} text="shahidansari292@gmail.com" onPress={() => Linking.openURL('mailto:shahidansari292@gmail.com')} />
-          </View>
-
-          {/* Stats Row */}
-          <View style={styles.statsRow}>
-            <StatCard label="DSA Solved" value="850+" icon={Code2} />
-            <StatCard label="Client Apps" value="3+" icon={Star} />
-            <StatCard label="Contributor" value="GSSoC" icon={Heart} />
-          </View>
         </Animated.View>
-
-        {/* About Me Section */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <User color={COLORS.primary} size={20} />
-            <Text style={styles.sectionTitle}>About Me</Text>
-          </View>
-          <Text style={styles.bioText}>
-            Full-Stack Developer and Computer Science student specialising in PERN/MERN
-            stacks, React Native and REST API design. Shipped a freelance real-estate
-            platform plus production-ready apps across fintech, banking and non-profits.
-          </Text>
-          <View style={styles.techChipsRow}>
-            {skills.map((tech) => (
-              <View key={tech} style={styles.techChip}>
-                <Text style={styles.techChipText}>{tech}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Experience */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <Briefcase color={COLORS.primary} size={20} />
-            <Text style={styles.sectionTitle}>Experience</Text>
-          </View>
-          <Text style={styles.expRole}>Mobile App & Backend Intern</Text>
-          <Text style={styles.expCompany}>Silver Vista Property LLP • Aug – Oct 2025</Text>
-          <View style={{ marginTop: 12 }}>
-            <Bullet text="Built React Native (Expo) + TypeScript apps for 3 clients" />
-            <Bullet text="Node.js + Express API with Prisma, PostgreSQL & OTP login" />
-            <Bullet text="CI/CD releases with GitHub Actions, deployed on AWS" />
-          </View>
-        </View>
-
-        {/* Projects */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <Folder color={COLORS.primary} size={20} />
-            <Text style={styles.sectionTitle}>Featured Projects</Text>
-          </View>
-          <View style={styles.projectCard}>
-            <Text style={styles.projectName}>PaisaPilot</Text>
-            <Text style={styles.projectDesc}>Personal finance & expense splitting app</Text>
-          </View>
-          <View style={styles.projectCard}>
-            <Text style={styles.projectName}>Bank Ledger System</Text>
-            <Text style={styles.projectDesc}>RESTful banking API with auth & ledgers</Text>
-          </View>
-          <View style={styles.achievementRow}>
-            <Trophy color={COLORS.primary} size={16} />
-            <Text style={styles.achievementText}>SAH 2.0 Hackathon — 1st Runner-Up</Text>
-          </View>
-        </View>
 
         {/* Social Links */}
         <View style={styles.sectionCard}>
@@ -582,74 +473,6 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0.5,
   },
-  heroRole: {
-    color: COLORS.primary,
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginTop: 6,
-  },
-  heroSub: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 4,
-  },
-
-  // Contact Pills
-  contactRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    marginTop: 12,
-    gap: 8,
-  },
-  contactPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  contactPillText: {
-    color: 'rgba(255,255,255,0.65)',
-    fontSize: 12,
-    marginLeft: 6,
-    fontWeight: '600',
-  },
-
-  // Stats
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-    marginTop: 24,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
-  },
-  statCard: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  statValue: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: '900',
-    marginTop: 6,
-  },
-  statLabel: {
-    color: COLORS.textSecondary,
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginTop: 2,
-  },
 
   // Section Card
   sectionCard: {
@@ -673,99 +496,6 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     letterSpacing: 0.3,
   },
-  bioText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 15,
-    lineHeight: 24,
-  },
-  techChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 16,
-    gap: 8,
-  },
-  techChip: {
-    backgroundColor: 'rgba(139, 92, 246, 0.1)',
-    paddingHorizontal: 13,
-    paddingVertical: 7,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.15)',
-  },
-  techChipText: {
-    color: '#A78BFA',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-
-  // Experience / Projects
-  expRole: {
-    color: COLORS.text,
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  expCompany: {
-    color: COLORS.primary,
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  bulletRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-    gap: 10,
-  },
-  bulletDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.primary,
-    marginTop: 7,
-  },
-  bulletText: {
-    flex: 1,
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  projectCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  projectName: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  projectDesc: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    marginTop: 3,
-  },
-  achievementRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.amberGlass,
-    borderRadius: 14,
-    padding: 12,
-    marginTop: 4,
-    borderWidth: 1,
-    borderColor: COLORS.amberBorder,
-    gap: 8,
-  },
-  achievementText: {
-    color: COLORS.primary,
-    fontSize: 13,
-    fontWeight: '700',
-    flex: 1,
-  },
-
   // Social Cards
   socialCard: {
     flexDirection: 'row',

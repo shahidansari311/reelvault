@@ -1,27 +1,10 @@
-import React, { useEffect, useRef, useCallback } from 'react';
-import {
-  NavigationContainer,
-  DarkTheme,
-  useNavigationContainerRef,
-  useNavigationState,
-  useFocused,
-} from '@react-navigation/native';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
+import { NavigationContainer, DarkTheme, useNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text, StyleSheet, Platform, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, Pressable, Animated, StyleSheet, Keyboard, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import {
-  LayoutGrid,
-  Video,
-  Play,
-  Eye,
-  Home,
-  Video as VideoIcon,
-  Play as PlayIcon,
-  Eye as EyeIcon,
-  Archive,
-  PlayCircle,
-  Info,
-} from 'lucide-react-native';
+import { LayoutGrid, Video, Play, Eye } from 'lucide-react-native';
 import { getMediaLibrary } from './utils/mediaLibrary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
@@ -53,6 +36,140 @@ const MyDarkTheme = {
     notification: COLORS.primary,
   },
 };
+
+/* ------------------------------------------------------------------ */
+/* Custom floating tab bar                                             */
+/* ------------------------------------------------------------------ */
+
+// Routes that appear in the bar. Everything else stays reachable via
+// navigation.navigate() but never gets a slot.
+const TABS = {
+  Home: { Icon: LayoutGrid, label: 'Home' },
+  Reels: { Icon: Video, label: 'Reels' },
+  YouTube: { Icon: Play, label: 'YouTube' },
+  Stories: { Icon: Eye, label: 'Stories' },
+};
+
+// Screens where the whole bar is hidden (full-screen experiences).
+const HIDE_ON = ['Player'];
+
+const BAR_HEIGHT = 68;
+const PILL_HEIGHT = 46;
+const ICON_SIZE = 22;
+
+function TabItem({ focused, label, Icon, onPress, onLongPress, accessibilityLabel }) {
+  const progress = useRef(new Animated.Value(focused ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(progress, {
+      toValue: focused ? 1 : 0,
+      useNativeDriver: false, // animating flex/width, so no native driver
+      friction: 9,
+      tension: 80,
+    }).start();
+  }, [focused, progress]);
+
+  const flex = progress.interpolate({ inputRange: [0, 1], outputRange: [1, 2.3] });
+  const bg = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['rgba(255,255,255,0)', COLORS.primary],
+  });
+  const labelOpacity = progress.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0, 1] });
+  const labelWidth = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 62] });
+
+  return (
+    <Animated.View style={[tabStyles.itemWrap, { flex }]}>
+      <Pressable
+        onPress={onPress}
+        onLongPress={onLongPress}
+        accessibilityRole="button"
+        accessibilityState={focused ? { selected: true } : {}}
+        accessibilityLabel={accessibilityLabel}
+        android_ripple={{ color: 'rgba(255,255,255,0.08)', borderless: true, radius: 30 }}
+        style={tabStyles.pressable}
+      >
+        <Animated.View style={[tabStyles.pill, { backgroundColor: bg }]}>
+          <Icon
+            size={ICON_SIZE}
+            color={focused ? '#000' : COLORS.textSecondary}
+            strokeWidth={focused ? 2.5 : 2}
+          />
+          <Animated.View style={{ width: labelWidth, opacity: labelOpacity, overflow: 'hidden' }}>
+            <Text numberOfLines={1} style={tabStyles.label}>
+              {label}
+            </Text>
+          </Animated.View>
+        </Animated.View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+function CustomTabBar({ state, descriptors, navigation }) {
+  const insets = useSafeAreaInsets();
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+    const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardOpen(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardOpen(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
+  const activeRoute = state.routes[state.index];
+  if (keyboardOpen || HIDE_ON.includes(activeRoute.name)) return null;
+
+  return (
+    <View
+      pointerEvents="box-none"
+      style={[tabStyles.container, { bottom: Math.max(insets.bottom, 12) + 4 }]}
+    >
+      <View style={tabStyles.bar}>
+        {state.routes.map((route, index) => {
+          const tab = TABS[route.name];
+          if (!tab) return null; // hidden route: no slot at all
+
+          const { options } = descriptors[route.key];
+          const focused = state.index === index;
+
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+            if (!focused && !event.defaultPrevented) {
+              navigation.navigate(route.name, route.params);
+            }
+          };
+
+          const onLongPress = () => {
+            navigation.emit({ type: 'tabLongPress', target: route.key });
+          };
+
+          return (
+            <TabItem
+              key={route.key}
+              focused={focused}
+              label={tab.label}
+              Icon={tab.Icon}
+              onPress={onPress}
+              onLongPress={onLongPress}
+              accessibilityLabel={options.tabBarAccessibilityLabel || tab.label}
+            />
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* App                                                                 */
+/* ------------------------------------------------------------------ */
 
 export default function App() {
   useEffect(() => {
@@ -165,138 +282,78 @@ export default function App() {
     <NavigationContainer ref={navigationRef} theme={MyDarkTheme} onReady={flushPendingSharedUrl}>
       <StatusBar style="light" />
       <Tab.Navigator
+        tabBar={(props) => <CustomTabBar {...props} />}
         detachInactiveScreens
         initialRouteName="Home"
         screenOptions={{
           headerShown: false,
-          unmountOnBlur: true,
           freezeOnBlur: true,
           lazy: true,
-          tabBarStyle: { display: 'none' },
+          // Tells the navigator not to reserve layout space for the floating bar
+          tabBarStyle: { position: 'absolute' },
         }}
       >
-        <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: 'Home' }} />
-        <Tab.Screen name="Reels" component={ReelDownloaderScreen} options={{ tabBarLabel: 'Reels' }} />
-        <Tab.Screen name="YouTube" component={YouTubeDownloaderScreen} options={{ tabBarLabel: 'YouTube' }} />
-        <Tab.Screen name="Stories" component={StoryViewerScreen} options={{ tabBarLabel: 'Stories' }} />
-        <Tab.Screen name="History" component={HistoryScreen} options={{ tabBarLabel: 'History' }} />
-        <Tab.Screen name="Player" component={InAppPlayerScreen} options={{ tabBarLabel: 'Player' }} />
-        <Tab.Screen name="About" component={AboutScreen} options={{ tabBarLabel: 'About' }} />
+        <Tab.Screen name="Home" component={HomeScreen} />
+        <Tab.Screen name="Reels" component={ReelDownloaderScreen} />
+        <Tab.Screen name="YouTube" component={YouTubeDownloaderScreen} />
+        <Tab.Screen name="Stories" component={StoryViewerScreen} />
+        {/* Hidden routes: CustomTabBar skips them, but navigate('History') etc. still works */}
+        <Tab.Screen name="History" component={HistoryScreen} />
+        <Tab.Screen name="Player" component={InAppPlayerScreen} />
+        <Tab.Screen name="About" component={AboutScreen} />
       </Tab.Navigator>
-      <CustomTabBar state={navigationRef.current?.getState()} navigation={navigationRef} />
       <ThemedAlert />
     </NavigationContainer>
   );
 }
 
-// --- CustomTabBar: icons aligned at the bottom (downside) of the pill ---
-function CustomTabBar(props) {
-  const { navigation } = props;
-  const focused = useFocused();
-
-  return (
-    <View style={styles.container}>
-      {navigation.getRoutes().map((route, index) => {
-        const iconName =
-          route.name === 'Home'
-            ? 'home'
-            : route.name === 'Reels'
-            ? 'video'
-            : route.name === 'YouTube'
-            ? 'play'
-            : route.name === 'Stories'
-            ? 'eye'
-            : route.name === 'History'
-            ? 'archive'
-            : route.name === 'Player'
-            ? 'play-circle'
-            : 'info';
-
-        const size = focused ? 36 : 28;
-        const iconColor = focused ? '#fff' : COLORS.textSecondary;
-
-        // Position: calculate x from route order
-        const tabIdx = ['Home', 'Reels', 'YouTube', 'Stories', 'History', 'Player', 'About'].indexOf(route.name);
-        if (tabIdx < 0) return null;
-
-        const tabWidth = (SCREEN_WIDTH - 32) / 8;
-        const startX = 2 * tabWidth;
-        const posX = startX + tabIdx * tabWidth + tabWidth / 2;
-
-        return (
-          <TouchableOpacity
-            key={route.name}
-            style={styles.tab}
-            onPress={() => navigation.navigate(route.name)}
-            accessibilityLabel={route.name}
-          >
-            <View style={{ ...styles.iconContainer, backgroundColor: focused ? COLORS.primary : 'transparent' }}>
-              {/* Bottom indicator line only on active tab */}
-              {focused && (
-                <View
-                  style={[
-                    styles.bottomIndicator,
-                    { left: posX - 14, backgroundColor: COLORS.primary },
-                  ]}
-                />
-              )}
-              <View style={styles.iconBg}>
-                <Icon name={iconName} size={size} color={iconColor} />
-              </View>
-            </View>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
-  );
-}
-
-const SCREEN_WIDTH = Dimensions.get('window').width;
-
-const styles = StyleSheet.create({
+const tabStyles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 16,
-    left: 0,
-    right: 0,
-    marginHorizontal: 16,
-    height: 64,
-    justifyContent: 'flex-end',
+    left: 16,
+    right: 16,
     alignItems: 'center',
   },
-  tab: {
-    width: (SCREEN_WIDTH - 32) / 8,
-    height: 64,
-    justifyContent: 'flex-end',
+  bar: {
+    flexDirection: 'row',
     alignItems: 'center',
+    width: '100%',
+    height: BAR_HEIGHT,
+    paddingHorizontal: 10,
+    backgroundColor: '#1A1A1E',
+    borderRadius: BAR_HEIGHT / 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    elevation: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.6,
+    shadowRadius: 20,
   },
-  iconContainer: {
-    position: 'relative',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  iconBg: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.surface,
+  itemWrap: {
+    height: BAR_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bottomIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    width: 28,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: COLORS.primary,
+  pressable: {
+    width: '100%',
+    height: BAR_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pill: {
+    height: PILL_HEIGHT,
+    minWidth: PILL_HEIGHT,
+    borderRadius: PILL_HEIGHT / 2,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  label: {
+    marginLeft: 8,
+    color: '#000',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
