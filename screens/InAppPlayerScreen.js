@@ -50,8 +50,8 @@ export default function InAppPlayerScreen({ navigation, route }) {
               title={title || 'Media Vault'}
               shouldPlay
               isLooping={false}
-              aspectRatio={undefined}
-              style={styles.fullPlayer}
+              accentColor='#FFC107'
+              style={{ width: '100%', height: '100%', borderRadius: 0 }}
             />
           ) : (
             <Image
@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   navSubtitle: {
-    color: COLORS.primary,
+    color: '#FFC107',
     fontSize: 10,
     fontWeight: 'bold',
     letterSpacing: 2,

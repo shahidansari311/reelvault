@@ -3,55 +3,42 @@ import {
   StyleSheet,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
   Keyboard,
   Share,
-  Image,
-  Dimensions,
   ScrollView,
   Animated,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import VideoPlayer from '../components/VideoPlayer';
+import { useIsFocused } from '@react-navigation/native';
 import { 
+  ArrowLeft,
   Download, 
   Link2 as LinkIcon, 
-  History as HistoryIcon, 
-  Trash2,
   Share2,
-  CheckCircle,
-  Play,
-  LayoutGrid,
-  ChevronLeft,
-  Shield,
+  Shield, 
   Video as VideoIcon,
-  Image as ImageIcon
 } from 'lucide-react-native';
-import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
+import { COLORS, RADII, FONTS, SHADOWS } from '../constants/Theme';
 import { fetchReelData } from '../services/api';
 import { startBackgroundDownload } from '../services/backgroundDownload';
 import { CustomInput } from '../components/CustomInput';
 import { ProgressBar } from '../components/ProgressBar';
 import { DownloadProgressBar } from '../components/DownloadProgressBar';
-import { useIsFocused } from '@react-navigation/native';
-
-const { width } = Dimensions.get('window');
+import VideoPlayer from '../components/VideoPlayer';
 
 const PreviewCard = ({ reelData, downloading, downloadProgress, handleDownload, handleShare, isFocused }) => {
-  // Reels are always video
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
-  const scaleAnim = React.useRef(new Animated.Value(0.95)).current;
+  const scaleAnim = React.useRef(new Animated.Value(0.96)).current;
   
   React.useEffect(() => {
     fadeAnim.setValue(0);
-    scaleAnim.setValue(0.95);
+    scaleAnim.setValue(0.96);
     Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
       Animated.spring(scaleAnim, { toValue: 1, friction: 6, useNativeDriver: true })
     ]).start();
   }, [reelData]);
@@ -65,18 +52,20 @@ const PreviewCard = ({ reelData, downloading, downloadProgress, handleDownload, 
           title={reelData.title || 'Instagram Reel'}
           shouldPlay={isFocused && !downloading}
           isLooping
-          aspectRatio={4 / 5}
+          aspectRatio={9 / 16}
         />
       </View>
 
       {downloading && (
-        <DownloadProgressBar progress={downloadProgress} />
+        <View style={{ marginBottom: 14 }}>
+          <DownloadProgressBar progress={downloadProgress} />
+        </View>
       )}
 
-      <LinearGradient colors={['rgba(20,20,25,0.8)', 'rgba(10,10,15,0.95)']} style={styles.metaCard}>
+      <View style={styles.metaCard}>
         <View style={styles.metaHeader}>
           <View style={styles.metaIconContainer}>
-            <VideoIcon color={COLORS.primary} size={20} />
+            <VideoIcon color={COLORS.primary} size={18} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.metaTitle} numberOfLines={1}>{reelData.title || 'Extracted Reel'}</Text>
@@ -86,17 +75,18 @@ const PreviewCard = ({ reelData, downloading, downloadProgress, handleDownload, 
         
         <View style={styles.actionGrid}>
           <TouchableOpacity 
-            style={[styles.downloadActionBtn, downloading && { opacity: 0.5, backgroundColor: COLORS.textSecondary }]}
+            style={[styles.downloadActionBtn, downloading && { opacity: 0.6 }]}
             onPress={handleDownload}
             disabled={downloading}
+            activeOpacity={0.85}
           >
             {downloading ? (
-              <ActivityIndicator color="#000" size="small" style={{ marginRight: 10 }} />
+              <ActivityIndicator color="#000" size="small" style={{ marginRight: 8 }} />
             ) : (
-              <Download color="#000" size={18} style={{ marginRight: 10 }} />
+              <Download color="#000" size={18} style={{ marginRight: 8 }} />
             )}
             <Text style={styles.downloadActionText}>
-              {downloading ? `SAVING ${downloadProgress?.percent || 0}%` : 'SAVE VIDEO'}
+              {downloading ? `SAVING ${downloadProgress?.percent || 0}%` : 'DOWNLOAD'}
             </Text>
           </TouchableOpacity>
 
@@ -104,11 +94,12 @@ const PreviewCard = ({ reelData, downloading, downloadProgress, handleDownload, 
             style={[styles.shareActionBtn, downloading && { opacity: 0.5 }]} 
             onPress={handleShare}
             disabled={downloading}
+            activeOpacity={0.8}
           >
-            <Share2 color={COLORS.text} size={20} />
+            <Share2 color={COLORS.text} size={18} />
           </TouchableOpacity>
         </View>
-      </LinearGradient>
+      </View>
     </Animated.View>
   );
 };
@@ -128,7 +119,6 @@ export default function ReelDownloaderScreen({ navigation, route }) {
   useEffect(() => {
     if (route.params?.initialUrl) {
       setUrl(route.params.initialUrl);
-      // Let the state update first, then fetch
       setTimeout(() => {
         if (route.params.initialUrl) {
           handleFetchUrl(route.params.initialUrl);
@@ -146,6 +136,7 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     const text = await Clipboard.getStringAsync();
     if (text.includes('instagram.com/')) {
       setUrl(text);
+      setError(null);
     }
   };
 
@@ -157,7 +148,6 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     setReelData(null);
     setError(null);
 
-    // Simulated progress for extraction (smooth 2% increments)
     const interval = setInterval(() => {
       setFetchProgress(prev => {
         if (prev >= 0.9) return prev;
@@ -242,7 +232,6 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     setLoading(false);
   };
 
-
   const handleDownload = async () => {
     if (!reelData?.videoUrl) return;
     setDownloading(true);
@@ -281,46 +270,33 @@ export default function ReelDownloaderScreen({ navigation, route }) {
   };
 
   return (
-    <LinearGradient 
-      colors={['#0A0A0B', '#151518', '#050505']} 
-      style={styles.container}
-    >
-      <LinearGradient 
-        colors={['rgba(180, 185, 255, 0.03)', 'transparent', 'transparent']} 
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-      {/* Navbar */}
-      <View style={[styles.navbar, { justifyContent: 'center' }]}>
-        <TouchableOpacity style={{ position: 'absolute', left: 0, top: 45, padding: 15 }} onPress={() => navigation.goBack()}>
-          <ChevronLeft color={COLORS.text} size={28} />
+    <View style={styles.container}>
+      {/* Simple Navbar: Back arrow + Instagram Reels title */}
+      <View style={styles.navbar}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <ArrowLeft color={COLORS.text} size={22} />
         </TouchableOpacity>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Shield color={COLORS.primary} size={18} style={{ marginRight: 8 }} />
-          <Text style={styles.navTitle}>SAVEX</Text>
-        </View>
+        <Text style={styles.navTitle}>Instagram Reels</Text>
+        <View style={{ width: 40 }} />
       </View>
 
       <ScrollView 
         showsVerticalScrollIndicator={false} 
-        contentContainerStyle={{ paddingBottom: 150 }}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
         {/* Title Section */}
         <View style={styles.heroSection}>
-          <Text style={styles.heroTitle}>
-            Download <Text style={{ fontStyle: 'italic', fontWeight: '400', color: COLORS.primary }}>Reels.</Text>
-          </Text>
+          <Text style={styles.heroTitle}>Download Reels.</Text>
           <Text style={styles.heroSub}>
-            Vault your favorite cinematic reels in high-definition. Simply paste any Instagram Reel link below to begin the extraction.
+            Paste any Instagram Reel link below to extract and save.
           </Text>
         </View>
 
-        {/* Input Card */}
+        {/* Extraction Card */}
         <View style={styles.extractionCard}>
           <CustomInput
-            placeholder="https://www.instagram.com/reel/..."
+            placeholder="Paste Instagram Reel link"
             value={url}
             onChangeText={(text) => {
               setUrl(text);
@@ -336,35 +312,34 @@ export default function ReelDownloaderScreen({ navigation, route }) {
           />
           
           <TouchableOpacity 
-            style={[styles.fetchBtn, loading && { opacity: 0.7 }]} 
+            style={[styles.extractBtn, loading && { opacity: 0.7 }]} 
             onPress={handleFetch}
             disabled={loading}
+            activeOpacity={0.85}
           >
             {loading ? (
               <ActivityIndicator color="#000" size="small" />
             ) : (
-              <Text style={styles.fetchBtnText}>EXTRACT MEDIA</Text>
+              <Text style={styles.extractBtnText}>EXTRACT</Text>
             )}
           </TouchableOpacity>
 
           {loading && (
-            <View style={{ marginTop: 24 }}>
-              <ProgressBar progress={fetchProgress} label="Extracting Reel" />
+            <View style={{ marginTop: 14 }}>
+              <ProgressBar progress={fetchProgress} label="Extracting Reel..." />
             </View>
           )}
 
           {error && (
-            <View style={styles.errorBubble}>
+            <View style={styles.errorCard}>
               <View style={styles.errorIconHeader}>
-                <Shield color="#FF6B6B" size={16} />
+                <Shield color={COLORS.primary} size={16} />
                 <Text style={styles.errorTitle}>{error.title}</Text>
               </View>
               <Text style={styles.errorBody}>{error.message}</Text>
             </View>
           )}
         </View>
-
-
 
         {/* Preview & Metadata */}
         {reelData && (
@@ -377,266 +352,195 @@ export default function ReelDownloaderScreen({ navigation, route }) {
             isFocused={isFocused}
           />
         )}
-
       </ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'transparent',
-    paddingHorizontal: SPACING.lg,
+    backgroundColor: COLORS.background,
   },
   navbar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    height: 100,
+    justifyContent: 'space-between',
     paddingTop: 50,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceLight,
   },
   navTitle: {
     color: COLORS.text,
     fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 2,
+    fontWeight: '700',
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 110, // Content padding bottom 110px
   },
   heroSection: {
-    marginTop: 30,
-    marginBottom: 30,
+    marginTop: 12,
+    marginBottom: 20,
   },
   heroTitle: {
     color: COLORS.text,
-    fontSize: 42,
+    fontSize: 26,
     fontWeight: '900',
+    letterSpacing: -0.5,
   },
   heroSub: {
     color: COLORS.textSecondary,
-    fontSize: 14,
-    marginTop: 10,
-    lineHeight: 22,
-    opacity: 0.8,
-  },
-  switchModeBtn: {
-    marginTop: 15,
-    alignSelf: 'flex-start',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 20,
-  },
-  switchModeText: {
-    color: COLORS.text,
-    fontSize: 13,
-    fontWeight: 'bold',
+    fontSize: 12,
+    marginTop: 6,
+    lineHeight: 18,
   },
   extractionCard: {
-    backgroundColor: 'rgba(0, 0, 0, 0.88)',
-    borderRadius: 32,
-    padding: 24,
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    padding: 16,
     borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-    marginBottom: 40,
-  },
-  inputBubble: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#000',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    height: 60,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 1)',
-  },
-  input: {
-    flex: 1,
-    color: COLORS.text,
-    fontSize: 14,
-    marginHorizontal: 12,
-    height: '100%',
-  },
-  pasteBubbleBtn: {
-    backgroundColor: 'rgba(55, 51, 51, 0.83)',
-    height: 36,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderColor: COLORS.border,
+    marginBottom: 16,
   },
   inlinePasteBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.26)',
-    height: 34,
-    paddingHorizontal: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    height: 32,
+    paddingHorizontal: 12,
     borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
   },
   pasteBubbleText: {
     color: COLORS.text,
-    fontSize: 12,
-    fontWeight: 'bold',
+    fontSize: 11,
+    fontWeight: '700',
   },
-  fetchBtn: {
+  extractBtn: {
     backgroundColor: COLORS.primary,
-    height: 60,
-    borderRadius: 30,
+    height: 52,
+    borderRadius: 50,
     width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 24,
     ...SHADOWS.primary,
   },
-  fetchBtnText: {
+  extractBtnText: {
     color: '#000',
-    fontSize: 17,
-    fontWeight: '900',
-  },
-  previewContainer: {
-    marginTop: 10,
-    marginBottom: 40,
-  },
-  previewFrame: {
-    width: '100%',
-    aspectRatio: 4 / 5,
-    borderRadius: 32,
-    overflow: 'hidden',
-    backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    ...SHADOWS.glass,
-  },
-  videoPlayer: {
-    width: '100%',
-    height: '100%',
-  },
-  metaCard: {
-    padding: 24,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    marginBottom: 24,
-  },
-  metaHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  metaIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(180, 185, 255, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  metaTitle: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 16,
+    fontWeight: '700',
     letterSpacing: 0.5,
   },
-  metaSubtitle: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    marginTop: 4,
-  },
-  actionGrid: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  downloadActionBtn: {
-    backgroundColor: COLORS.primary,
-    height: 56,
-    borderRadius: 18,
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  downloadActionText: {
-    color: '#000',
-    fontSize: 14,
-    fontWeight: '900',
-    marginLeft: 8,
-    letterSpacing: 1,
-  },
-  shareActionBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  errorCard: {
+    backgroundColor: COLORS.amberGlass,
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  creatorBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    padding: 20,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: COLORS.glassBorder,
-  },
-  creatorAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-  },
-  creatorInfo: {
-    marginLeft: 16,
-  },
-  creatorNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  creatorName: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  creatorDetail: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    marginTop: 2,
-  },
-  emptyHistoryText: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
-  },
-  errorBubble: {
-    backgroundColor: 'rgba(255,107,107,0.05)',
-    borderRadius: 20,
-    padding: 16,
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,107,107,0.1)',
+    borderColor: COLORS.amberBorder,
   },
   errorIconHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
+    gap: 6,
   },
   errorTitle: {
-    color: '#FF6B6B',
+    color: COLORS.primary,
     fontSize: 13,
-    fontWeight: 'bold',
-    marginLeft: 8,
-    letterSpacing: 0.5,
+    fontWeight: '700',
   },
   errorBody: {
-    color: 'rgba(255,255,255,0.6)',
+    color: COLORS.textSecondary,
     fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 17,
   },
-
+  previewContainer: {
+    marginTop: 6,
+    marginBottom: 16,
+  },
+  previewFrame: {
+    width: '100%',
+    aspectRatio: 9 / 16, // NOT square, 9/16
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  metaCard: {
+    backgroundColor: COLORS.surface,
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  metaHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  metaIconContainer: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: COLORS.amberGlass,
+    borderWidth: 1,
+    borderColor: COLORS.amberBorder,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  metaTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  metaSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  actionGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  downloadActionBtn: {
+    backgroundColor: COLORS.primary,
+    height: 52,
+    borderRadius: 50,
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...SHADOWS.primary,
+  },
+  downloadActionText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  shareActionBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: COLORS.surfaceLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
 });

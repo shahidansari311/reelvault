@@ -1,7 +1,7 @@
 // SDK 54+: createDownloadResumable lives on the legacy API; main entry throws if used from non-legacy import.
 import * as FileSystem from 'expo-file-system/legacy';
-
 import * as MediaLibrary from 'expo-media-library';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert, Linking, NativeModules, NativeEventEmitter, Platform } from 'react-native';
 
 const { NativeDownload } = NativeModules;
@@ -13,6 +13,54 @@ const getEmitter = () => {
     downloadEmitter = new NativeEventEmitter(NativeDownload);
   }
   return downloadEmitter;
+};
+
+/**
+ * Get or initialize base download folder URI via StorageAccessFramework (Android only).
+ * Asks user ONCE on first run and persists to AsyncStorage.
+ */
+export const getOrInitBaseFolderUri = async () => {
+  if (Platform.OS !== 'android') return null;
+  try {
+    const saved = await AsyncStorage.getItem('savex_base_folder_uri');
+    if (saved) return saved;
+
+    if (!FileSystem.StorageAccessFramework) return null;
+
+    const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+    if (permissions && permissions.granted) {
+      await AsyncStorage.setItem('savex_base_folder_uri', permissions.directoryUri);
+      return permissions.directoryUri;
+    }
+    return null;
+  } catch (err) {
+    console.warn('Error obtaining base folder URI:', err);
+    return null;
+  }
+};
+
+/**
+ * Determine organized subfolder name from download metadata.
+ */
+export const getSubfolderName = (meta) => {
+  if (!meta) return 'SaveX Downloads';
+  const platform = (meta.platform || '').toLowerCase();
+  const format = (meta.format || '').toLowerCase();
+  const kind = (meta.kind || '').toLowerCase();
+
+  if (platform === 'instagram') {
+    if (format.includes('story')) return 'Instagram Stories';
+    if (format.includes('mp4') || format.includes('video')) return 'Instagram Videos';
+    return 'Instagram Videos';
+  }
+
+  if (platform === 'youtube') {
+    if (kind === 'audio' || format.includes('mp3')) return 'YouTube Audios';
+    if (kind === 'video' || format.includes('mp4')) return 'YouTube Videos';
+    return 'YouTube Videos';
+  }
+
+  return 'SaveX Downloads';
 };
 
 /**
@@ -71,7 +119,7 @@ export const downloadFile = async (url, fileName, onProgress, meta = null) => {
 async function startNativeBackgroundDownload(url, fileName, onProgress, meta) {
   const title = meta?.title || fileName;
   const isAudio = fileName.endsWith('.mp3') || fileName.endsWith('.m4a') || meta?.format?.toLowerCase()?.includes('mp3');
-  const mimeType = isAudio ? 'audio/mp4' : 'video/mp4';
+  const mimeType = isAudio ? 'audio/mpeg' : 'video/mp4';
 
   return new Promise(async (resolve) => {
     let progressSub = null;
@@ -120,11 +168,9 @@ async function startNativeBackgroundDownload(url, fileName, onProgress, meta) {
       downloadId = await NativeDownload.startDownload(url, fileName, title, mimeType, 'SaveX');
 
       // Safety timeout: if we don't get a completion event in 10 minutes, resolve anyway
-      // (The download continues in background regardless)
       setTimeout(() => {
         if (progressSub || completeSub) {
           cleanup();
-          // Don't alert — the download is likely still running in background
           if (onProgress) onProgress(1);
           resolve(true);
         }
@@ -202,7 +248,6 @@ async function startExpoDownload(url, fileName, onProgress, meta) {
 
   try {
     // Step 2: Copy directly to app's permanent documents folder
-    // This does NOT trigger any modify permission dialog on Android 11+
     const permanentDir = FileSystem.documentDirectory + 'SAVEX/';
     await FileSystem.makeDirectoryAsync(permanentDir, { intermediates: true });
     const permanentPath = permanentDir + fileName;
@@ -212,12 +257,27 @@ async function startExpoDownload(url, fileName, onProgress, meta) {
     finalUri = permanentPath;
 
     // Step 3: Add to gallery using the permanent path — only asks ONCE ever
-    // because we are creating not modifying an existing external file.
-    // On Android, we skip createAlbumAsync. Adding to an album requires moving the asset,
-    // which triggers the Android 11+ scoped storage "modify" permission prompt on every download.
     const asset = await MediaLibrary.createAssetAsync(permanentPath);
     if (Platform.OS !== 'android') {
       await MediaLibrary.createAlbumAsync('SaveX', asset, false);
+    }
+
+    // Step 4: Organized folder saving via SAF if enabled
+    try {
+      const baseFolderUri = await getOrInitBaseFolderUri();
+      if (baseFolderUri && FileSystem.StorageAccessFramework) {
+        const subfolderName = getSubfolderName(meta);
+        // Create the subfolder
+        const subfolderUri = await FileSystem.StorageAccessFramework.makeDirectoryAsync(baseFolderUri, subfolderName).catch(() => baseFolderUri);
+        // Copy file to subfolder
+        const isAudio = fileName.endsWith('.mp3') || meta?.format?.toLowerCase()?.includes('mp3');
+        const mimeType = isAudio ? 'audio/mpeg' : 'video/mp4';
+        const targetUri = await FileSystem.StorageAccessFramework.createFileAsync(subfolderUri || baseFolderUri, fileName, mimeType);
+        const base64 = await FileSystem.readAsStringAsync(finalUri, { encoding: FileSystem.EncodingType.Base64 });
+        await FileSystem.writeAsStringAsync(targetUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      }
+    } catch (folderErr) {
+      console.warn('Could not save to organized folder, file is still saved to gallery', folderErr);
     }
 
     // Clean up cache

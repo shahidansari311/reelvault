@@ -1,20 +1,24 @@
 import React, { useEffect } from 'react';
-
 import { NavigationContainer, DarkTheme, useNavigationContainerRef } from '@react-navigation/native';
-
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Alert, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { LayoutGrid, Search, Heart, Play, Video } from 'lucide-react-native';
+import { LayoutGrid, Video, Play, Eye } from 'lucide-react-native';
+import * as MediaLibrary from 'expo-media-library';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Linking from 'expo-linking';
+
 import HomeScreen from './screens/HomeScreen';
 import ReelDownloaderScreen from './screens/ReelDownloaderScreen';
 import StoryViewerScreen from './screens/StoryViewerScreen';
 import YouTubeDownloaderScreen from './screens/YouTubeDownloaderScreen';
+import HistoryScreen from './screens/HistoryScreen';
 import AboutScreen from './screens/AboutScreen';
 import InAppPlayerScreen from './screens/InAppPlayerScreen';
 import { COLORS } from './constants/Theme';
 import api from './services/api';
 import { extractUrlFromText, getNavigationTarget } from './utils/urlParser';
+import { setupNotificationChannel, requestNotificationPermission } from './services/notificationService';
 
 const Tab = createBottomTabNavigator();
 
@@ -30,11 +34,6 @@ const MyDarkTheme = {
   },
 };
 
-import * as MediaLibrary from 'expo-media-library';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Linking from 'expo-linking';
-import { setupNotificationChannel, requestNotificationPermission } from './services/notificationService';
-
 export default function App() {
   useEffect(() => {
     // Request MediaLibrary permission ONCE on first launch — never again
@@ -45,17 +44,36 @@ export default function App() {
 
         // Check if already granted (no popup)
         const { status: existing } = await MediaLibrary.getPermissionsAsync(true);
-        if (existing === 'granted') {
+        if (existing !== 'granted') {
+          // Only show the system dialog if we've never asked before
+          const hasAsked = await AsyncStorage.getItem('hasAskedMediaPerm');
+          if (!hasAsked) {
+            await MediaLibrary.requestPermissionsAsync(true);
+            await AsyncStorage.setItem('hasAskedMediaPerm', 'true');
+          }
+        } else {
           await AsyncStorage.setItem('hasAskedMediaPerm', 'true');
-          return;
         }
 
-        // Only show the system dialog if we've never asked before
-        const hasAsked = await AsyncStorage.getItem('hasAskedMediaPerm');
-        if (!hasAsked) {
-          await MediaLibrary.requestPermissionsAsync(true);
-          // Mark as asked regardless of result — never prompt again
-          await AsyncStorage.setItem('hasAskedMediaPerm', 'true');
+        // Ask for download folder ONCE on first launch
+        if (Platform.OS === 'android') {
+          const { getOrInitBaseFolderUri } = require('./utils/download');
+          const hasFolder = await AsyncStorage.getItem('savex_base_folder_uri');
+          if (!hasFolder) {
+            // Show friendly alert first, then open picker
+            Alert.alert(
+              'Choose Download Folder',
+              'SaveX will save your downloads in organized folders. Please select a base folder once.',
+              [
+                {
+                  text: 'Choose Folder',
+                  onPress: async () => {
+                    await getOrInitBaseFolderUri();
+                  },
+                },
+              ]
+            );
+          }
         }
       } catch (err) {
         console.log('Permission request error:', err);
@@ -65,11 +83,11 @@ export default function App() {
 
     const keepAlive = setInterval(async () => {
       try {
-        await api.get('/'); 
+        await api.get('/');
       } catch (e) {
         // Silently fail
       }
-    }, 5 * 60 * 1000); 
+    }, 5 * 60 * 1000);
 
     return () => clearInterval(keepAlive);
   }, []);
@@ -80,12 +98,10 @@ export default function App() {
     const handleIncomingURL = (rawUrl) => {
       if (!rawUrl) return;
 
-      // Extract clean URL from shared text (Instagram/YouTube sometimes include extra text)
       const cleanUrl = extractUrlFromText(rawUrl);
       const target = getNavigationTarget(cleanUrl);
       if (!target) return;
 
-      // Wait for navigation to be ready, then route to the correct screen
       setTimeout(() => {
         if (navigationRef.isReady()) {
           navigationRef.navigate(target.screen, target.params);
@@ -93,18 +109,16 @@ export default function App() {
       }, 800);
     };
 
-    // Handle when app was CLOSED and opened via share intent
-    Linking.getInitialURL().then(url => {
+    Linking.getInitialURL().then((url) => {
       if (url) handleIncomingURL(url);
     });
 
-    // Handle when app was in BACKGROUND and brought to foreground via share
     const subscription = Linking.addEventListener('url', ({ url }) => {
       handleIncomingURL(url);
     });
-    
+
     return () => subscription.remove();
-  }, []);
+  }, [navigationRef]);
 
   return (
     <NavigationContainer ref={navigationRef} theme={MyDarkTheme}>
@@ -119,32 +133,63 @@ export default function App() {
           tabBarStyle: {
             backgroundColor: 'transparent',
             borderTopWidth: 0,
-            height: 100,
+            height: 76,
             position: 'absolute',
-            bottom: 0,
+            bottom: 12,
             left: 0,
             right: 0,
-            elevation: 0,
-            paddingHorizontal: 10,
-            justifyContent: 'space-evenly'
+            marginHorizontal: 12,
+            elevation: 10,
+            borderRadius: 28,
+            borderWidth: 1,
+            borderColor: 'rgba(255, 255, 255, 0.08)',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: 0.35,
+            shadowRadius: 14,
           },
           tabBarItemStyle: {
             justifyContent: 'center',
             alignItems: 'center',
-            paddingTop: 10,
+            paddingTop: 8,
+            paddingBottom: 14,
             flex: 1,
           },
           tabBarLabelStyle: {
             fontSize: 10,
-            fontWeight: '800',
-            letterSpacing: 0.5,
+            fontWeight: '700',
+            letterSpacing: 0.3,
             marginTop: 2,
-            marginBottom: 28, // Pushes labels up to leave room for Shahid text
+            marginBottom: 6,
           },
           tabBarBackground: () => (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(21, 21, 24, 0.98)', borderTopLeftRadius: 30, borderTopRightRadius: 30 }]}>
-              <View style={{ position: 'absolute', bottom: 15, left: 0, right: 0, alignItems: 'center' }}>
-                <Text style={{ color: 'rgba(255,255,255,0.15)', fontSize: 12, letterSpacing: 1, fontWeight: 'bold' }}>
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: 'rgba(13, 13, 15, 0.97)',
+                  borderRadius: 28,
+                  overflow: 'hidden',
+                },
+              ]}
+            >
+              <View
+                style={{
+                  position: 'absolute',
+                  bottom: 3,
+                  left: 0,
+                  right: 0,
+                  alignItems: 'center',
+                }}
+              >
+                <Text
+                  style={{
+                    color: 'rgba(255, 255, 255, 0.12)',
+                    fontSize: 10,
+                    letterSpacing: 1,
+                    fontWeight: '700',
+                  }}
+                >
                   MADE BY SHAHID ANSARI
                 </Text>
               </View>
@@ -153,29 +198,26 @@ export default function App() {
           tabBarActiveTintColor: COLORS.primary,
           tabBarInactiveTintColor: COLORS.textSecondary,
           tabBarShowLabel: true,
-          tabBarIcon: ({ color, size, focused }) => {
+          tabBarIcon: ({ color, focused }) => {
             let Icon;
             if (route.name === 'Home') Icon = LayoutGrid;
             else if (route.name === 'Reels') Icon = Video;
             else if (route.name === 'YouTube') Icon = Play;
-            else Icon = Heart;
+            else if (route.name === 'Stories') Icon = Eye;
+            else Icon = LayoutGrid;
 
             return (
               <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-                <Icon size={24} color={color} />
-                {focused && (
-                  <View 
-                    style={{ 
-                      width: 4, 
-                      height: 4, 
-                      borderRadius: 2, 
-                      backgroundColor: COLORS.primary, 
-                      position: 'absolute',
-                      top: -10,
-                      alignSelf: 'center',
-                    }} 
-                  />
-                )}
+                <Icon size={22} color={color} />
+                <View
+                  style={{
+                    width: 4,
+                    height: 4,
+                    borderRadius: 2,
+                    backgroundColor: focused ? COLORS.primary : 'transparent',
+                    marginTop: 3,
+                  }}
+                />
               </View>
             );
           },
@@ -185,20 +227,30 @@ export default function App() {
         <Tab.Screen name="Reels" component={ReelDownloaderScreen} options={{ tabBarLabel: 'Reels' }} />
         <Tab.Screen name="YouTube" component={YouTubeDownloaderScreen} options={{ tabBarLabel: 'YouTube' }} />
         <Tab.Screen name="Stories" component={StoryViewerScreen} options={{ tabBarLabel: 'Stories' }} />
-        <Tab.Screen 
-          name="Player" 
-          component={InAppPlayerScreen} 
-          options={{ 
+        <Tab.Screen
+          name="History"
+          component={HistoryScreen}
+          options={{
             tabBarButton: () => null,
             tabBarStyle: { display: 'none' },
             tabBarItemStyle: { display: 'none', width: 0, height: 0 },
           }}
         />
-        <Tab.Screen 
-          name="About" 
-          component={AboutScreen} 
-          options={{ 
+        <Tab.Screen
+          name="Player"
+          component={InAppPlayerScreen}
+          options={{
             tabBarButton: () => null,
+            tabBarStyle: { display: 'none' },
+            tabBarItemStyle: { display: 'none', width: 0, height: 0 },
+          }}
+        />
+        <Tab.Screen
+          name="About"
+          component={AboutScreen}
+          options={{
+            tabBarButton: () => null,
+            tabBarStyle: { display: 'none' },
             tabBarItemStyle: { display: 'none', width: 0, height: 0 },
           }}
         />

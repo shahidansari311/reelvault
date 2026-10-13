@@ -1,38 +1,48 @@
-import React from 'react';
-import { View, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
-import { Trash2 } from 'lucide-react-native';
-import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
+import React, { useState, useRef } from 'react';
+import { View, TextInput, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { X } from 'lucide-react-native';
+import { COLORS, RADII, FONTS } from '../constants/Theme';
 
-export const CustomInput = ({ 
-  value, 
-  onChangeText, 
-  placeholder, 
-  icon: Icon, 
-  onClear,
-  suffix: Suffix,
-  ...props 
-}) => {
+export const CustomInput = ({ placeholder, value, onChangeText, onClear, icon: Icon, suffix }) => {
+  const [focused, setFocused] = useState(false);
+  const borderAnim = useRef(new Animated.Value(0)).current;
+
+  const handleFocus = () => {
+    setFocused(true);
+    Animated.timing(borderAnim, { toValue: 1, duration: 200, useNativeDriver: false }).start();
+  };
+
+  const handleBlur = () => {
+    setFocused(false);
+    Animated.timing(borderAnim, { toValue: 0, duration: 200, useNativeDriver: false }).start();
+  };
+
+  const borderColor = borderAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [COLORS.border, COLORS.primary],
+  });
+
   return (
-    <View style={styles.container}>
-      {Icon && <Icon color={COLORS.textSecondary} size={18} style={styles.icon} />}
+    <Animated.View style={[styles.container, { borderColor }]}>
+      {Icon && <Icon color={focused ? COLORS.primary : COLORS.textMuted} size={16} style={styles.icon} />}
       <TextInput
         style={styles.input}
         placeholder={placeholder}
-        placeholderTextColor="rgba(255,255,255,0.3)"
+        placeholderTextColor={COLORS.textMuted}
         value={value}
         onChangeText={onChangeText}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
         autoCapitalize="none"
-        {...props}
+        autoCorrect={false}
       />
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        {value.length > 0 && onClear && (
-          <TouchableOpacity onPress={onClear} style={{ marginRight: 12 }}>
-            <Trash2 color={COLORS.textSecondary} size={18} />
-          </TouchableOpacity>
-        )}
-        {Suffix && <Suffix />}
-      </View>
-    </View>
+      {!!value && (
+        <TouchableOpacity onPress={onClear} style={styles.clearBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <X color={COLORS.textMuted} size={14} />
+        </TouchableOpacity>
+      )}
+      {suffix && (typeof suffix === 'function' ? suffix() : suffix)}
+    </Animated.View>
   );
 };
 
@@ -40,23 +50,26 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    height: 60,
-    width: '100%',
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    ...SHADOWS.glass,
+    backgroundColor: COLORS.surfaceLight,
+    borderRadius: RADII.input,
+    paddingHorizontal: 14,
+    height: 50,
+    borderWidth: 1.5,
+    marginBottom: 12,
+    gap: 8,
   },
   icon: {
-    marginRight: 12,
+    flexShrink: 0,
   },
   input: {
     flex: 1,
     color: COLORS.text,
-    fontSize: 15,
+    fontSize: FONTS.md,
     height: '100%',
   },
+  clearBtn: {
+    padding: 4,
+  },
 });
+
+export default CustomInput;

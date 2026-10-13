@@ -24,26 +24,17 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react-native';
+import { COLORS } from '../constants/Theme';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const SEEK_STEP = 10; // seconds
 const CONTROLS_TIMEOUT = 4000; // auto-hide after 4s
 const SLIDER_HEIGHT = 36;
 
 /**
- * Premium dark video player with custom controls overlay.
- * Uses expo-av Video under the hood — no extra packages needed.
- *
- * Props:
- *  - uri          (string)  — Video source URL
- *  - title        (string)  — Displayed title
- *  - shouldPlay   (bool)    — Auto-play on mount (default: true)
- *  - isLooping    (bool)    — Loop playback (default: true)
- *  - aspectRatio  (number)  — Container aspect ratio (default: 16/9)
- *  - onFullscreenChange (fn) — Called when fullscreen toggles
- *  - style        (object)  — Additional container styles
- *  - accentColor  (string)  — Accent color for controls (default: '#B4B9FF')
+ * Premium dark video player with sunflower amber custom controls.
+ * Uses expo-av Video under the hood.
  */
 export default function VideoPlayer({
   uri,
@@ -53,11 +44,10 @@ export default function VideoPlayer({
   aspectRatio = 16 / 9,
   onFullscreenChange,
   style,
-  accentColor = '#B4B9FF',
+  accentColor = COLORS.primary, // Default sunflower amber #FFC107
 }) {
   const videoRef = useRef(null);
   const controlsTimeout = useRef(null);
-  const sliderRef = useRef(null);
 
   const [status, setStatus] = useState({});
   const [showControls, setShowControls] = useState(true);
@@ -71,6 +61,19 @@ export default function VideoPlayer({
   const controlsOpacity = useRef(new Animated.Value(1)).current;
   const centerIconScale = useRef(new Animated.Value(0)).current;
   const centerIconOpacity = useRef(new Animated.Value(0)).current;
+  const shimmerAnim = useRef(new Animated.Value(0.4)).current;
+
+  // Shimmer pulse animation for loading state
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, { toValue: 0.85, duration: 800, useNativeDriver: true }),
+        Animated.timing(shimmerAnim, { toValue: 0.4, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [shimmerAnim]);
 
   // Derived state
   const isPlaying = status.isPlaying || false;
@@ -84,7 +87,7 @@ export default function VideoPlayer({
 
   const isPortrait = videoNaturalSize
     ? videoNaturalSize.height > videoNaturalSize.width
-    : true; // Default to true (portrait) for social media content
+    : true;
 
   // ─── Controls Visibility ───────────────────────────────────────
   const resetControlsTimer = useCallback(() => {
@@ -143,8 +146,8 @@ export default function VideoPlayer({
       }),
       Animated.timing(centerIconOpacity, {
         toValue: 0,
-        duration: 600,
-        delay: 200,
+        duration: 500,
+        delay: 150,
         useNativeDriver: true,
       }),
     ]).start();
@@ -209,7 +212,6 @@ export default function VideoPlayer({
       onPanResponderMove: (evt, gestureState) => {
         const startX = gestureState.x0;
         const currentX = gestureState.moveX;
-        // Calculate relative to slider bounds
         const sliderStartX = startX - (evt.nativeEvent.locationX || 0);
         const relativeX = currentX - sliderStartX;
         const pct = Math.max(0, Math.min(1, relativeX / sliderWidth));
@@ -264,19 +266,27 @@ export default function VideoPlayer({
         </View>
       </TouchableWithoutFeedback>
 
-      {/* Buffering Spinner (always visible when buffering) */}
+      {/* Buffering: semi-transparent overlay with small amber ActivityIndicator (not blocking) */}
       {isBuffering && isLoaded && (
-        <View style={styles.bufferingOverlay}>
-          <ActivityIndicator size="large" color={accentColor} />
+        <View style={styles.bufferingOverlay} pointerEvents="none">
+          <View style={styles.bufferingBubble}>
+            <ActivityIndicator size="small" color={accentColor} />
+          </View>
         </View>
       )}
 
-      {/* Initial Loading */}
+      {/* Initial Loading: animated skeleton shimmer with pulsing gradient + amber spinner */}
       {!isLoaded && (
-        <View style={styles.loadingOverlay}>
+        <Animated.View style={[styles.loadingOverlay, { opacity: shimmerAnim }]} pointerEvents="none">
+          <LinearGradient
+            colors={['#161618', '#222226', '#161618']}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
           <ActivityIndicator size="large" color={accentColor} />
           <Text style={styles.loadingText}>Loading video...</Text>
-        </View>
+        </Animated.View>
       )}
 
       {/* Center Flash Icon (play/pause feedback) */}
@@ -290,11 +300,11 @@ export default function VideoPlayer({
         ]}
         pointerEvents="none"
       >
-        <View style={[styles.centerFlashCircle, { backgroundColor: `${accentColor}22` }]}>
+        <View style={[styles.centerFlashCircle, { backgroundColor: 'rgba(255, 193, 7, 0.2)' }]}>
           {isPlaying ? (
-            <Pause color="#FFF" size={32} fill="#FFF" />
+            <Pause color="#FFF" size={28} fill="#FFF" />
           ) : (
-            <Play color="#FFF" size={32} fill="#FFF" />
+            <Play color="#FFF" size={28} fill="#FFF" />
           )}
         </View>
       </Animated.View>
@@ -302,13 +312,13 @@ export default function VideoPlayer({
       {/* Controls Overlay */}
       {showControls && (
         <Animated.View style={[styles.controlsOverlay, { opacity: controlsOpacity }]}>
-          {/* Top Gradient + Title */}
+          {/* Top Gradient + Title (13px) */}
           <LinearGradient
-            colors={['rgba(0,0,0,0.7)', 'transparent']}
+            colors={['rgba(0,0,0,0.75)', 'transparent']}
             style={styles.topGradient}
           >
             <View style={styles.topRow}>
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, paddingRight: 10 }}>
                 {title && (
                   <Text style={styles.title} numberOfLines={1}>
                     {title}
@@ -321,9 +331,9 @@ export default function VideoPlayer({
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
                 {isMuted ? (
-                  <VolumeX color="#FFF" size={20} />
+                  <VolumeX color="#FFF" size={18} />
                 ) : (
-                  <Volume2 color="#FFF" size={20} />
+                  <Volume2 color="#FFF" size={18} />
                 )}
               </TouchableOpacity>
             </View>
@@ -332,38 +342,38 @@ export default function VideoPlayer({
           {/* Center Controls */}
           <TouchableWithoutFeedback onPress={toggleControls}>
             <View style={styles.centerControls}>
-              {/* Skip Back */}
+              {/* Skip Back: 44px circle */}
               <TouchableOpacity
                 style={styles.seekBtn}
                 onPress={() => seekBy(-SEEK_STEP)}
                 activeOpacity={0.7}
               >
-                <SkipBack color="#FFF" size={24} fill="#FFF" />
+                <SkipBack color="#FFF" size={20} fill="#FFF" />
                 <Text style={styles.seekLabel}>10</Text>
               </TouchableOpacity>
 
-              {/* Play / Pause */}
+              {/* Play / Pause: 60px amber background */}
               <TouchableOpacity
                 style={[styles.playPauseBtn, { backgroundColor: accentColor }]}
                 onPress={togglePlayPause}
                 activeOpacity={0.8}
               >
                 {didFinish && !isLooping ? (
-                  <RotateCcw color="#000" size={28} />
+                  <RotateCcw color="#000" size={24} />
                 ) : isPlaying ? (
-                  <Pause color="#000" size={28} fill="#000" />
+                  <Pause color="#000" size={24} fill="#000" />
                 ) : (
-                  <Play color="#000" size={28} fill="#000" style={{ marginLeft: 3 }} />
+                  <Play color="#000" size={24} fill="#000" style={{ marginLeft: 2 }} />
                 )}
               </TouchableOpacity>
 
-              {/* Skip Forward */}
+              {/* Skip Forward: 44px circle */}
               <TouchableOpacity
                 style={styles.seekBtn}
                 onPress={() => seekBy(SEEK_STEP)}
                 activeOpacity={0.7}
               >
-                <SkipForward color="#FFF" size={24} fill="#FFF" />
+                <SkipForward color="#FFF" size={20} fill="#FFF" />
                 <Text style={styles.seekLabel}>10</Text>
               </TouchableOpacity>
             </View>
@@ -371,10 +381,10 @@ export default function VideoPlayer({
 
           {/* Bottom Gradient + Slider + Time */}
           <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.75)']}
+            colors={['transparent', 'rgba(0,0,0,0.8)']}
             style={styles.bottomGradient}
           >
-            {/* Progress Bar */}
+            {/* Progress Bar (6px tall track, 18px thumb) */}
             <View style={styles.progressContainer}>
               <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
 
@@ -383,9 +393,9 @@ export default function VideoPlayer({
                 onLayout={(e) => setSliderWidth(e.nativeEvent.layout.width)}
                 {...panResponder.panHandlers}
               >
-                {/* Unfilled track background */}
+                {/* 6px tall track background */}
                 <View style={styles.sliderBackground} />
-                {/* Filled track */}
+                {/* 6px tall filled track */}
                 <View
                   style={[
                     styles.sliderFilled,
@@ -395,7 +405,7 @@ export default function VideoPlayer({
                     },
                   ]}
                 />
-                {/* Thumb */}
+                {/* 18px diameter thumb */}
                 <View
                   style={[
                     styles.sliderThumb,
@@ -403,8 +413,8 @@ export default function VideoPlayer({
                       left: `${progress * 100}%`,
                       backgroundColor: accentColor,
                       transform: [
-                        { translateX: -7 },
-                        { scale: isSeeking ? 1.4 : 1 },
+                        { translateX: -9 },
+                        { scale: isSeeking ? 1.3 : 1 },
                       ],
                     },
                   ]}
@@ -421,7 +431,7 @@ export default function VideoPlayer({
                 onPress={replay}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
-                <RotateCcw color="#FFF" size={18} />
+                <RotateCcw color="#FFF" size={16} />
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -430,9 +440,9 @@ export default function VideoPlayer({
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
                 {fullscreen ? (
-                  <Minimize2 color="#FFF" size={20} />
+                  <Minimize2 color="#FFF" size={18} />
                 ) : (
-                  <Maximize2 color="#FFF" size={20} />
+                  <Maximize2 color="#FFF" size={18} />
                 )}
               </TouchableOpacity>
             </View>
@@ -472,19 +482,24 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: COLORS.surface,
   },
   loadingText: {
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(255, 255, 255, 0.6)',
     fontSize: 12,
-    marginTop: 12,
+    marginTop: 10,
     fontWeight: '600',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   bufferingOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  bufferingBubble: {
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    padding: 10,
+    borderRadius: 20,
   },
 
   // Center flash (play/pause visual feedback)
@@ -494,13 +509,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   centerFlashCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 193, 7, 0.4)',
   },
 
   // Controls overlay
@@ -512,8 +527,8 @@ const styles = StyleSheet.create({
   // Top
   topGradient: {
     paddingTop: 12,
-    paddingHorizontal: 16,
-    paddingBottom: 30,
+    paddingHorizontal: 14,
+    paddingBottom: 26,
   },
   topRow: {
     flexDirection: 'row',
@@ -522,7 +537,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#FFF',
-    fontSize: 14,
+    fontSize: 13, // Title text 13px
     fontWeight: '700',
     letterSpacing: 0.3,
     textShadowColor: 'rgba(0,0,0,0.6)',
@@ -535,56 +550,56 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 36,
+    gap: 30,
   },
   seekBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    width: 44, // 44px circle (was 52px)
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   seekLabel: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 9,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 8,
     fontWeight: 'bold',
     position: 'absolute',
-    bottom: 5,
+    bottom: 4,
   },
   playPauseBtn: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 60, // 60px (was 68px), amber background
+    height: 60,
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000',
+    elevation: 6,
+    shadowColor: COLORS.primary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
   },
 
   // Bottom
   bottomGradient: {
-    paddingBottom: 14,
-    paddingHorizontal: 16,
-    paddingTop: 40,
+    paddingBottom: 12,
+    paddingHorizontal: 14,
+    paddingTop: 36,
   },
   progressContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
+    gap: 8,
+    marginBottom: 6,
   },
   timeText: {
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(255, 255, 255, 0.75)',
     fontSize: 11,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
-    minWidth: 38,
+    minWidth: 36,
     textAlign: 'center',
   },
   sliderTrack: {
@@ -596,24 +611,24 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    top: (SLIDER_HEIGHT - 4) / 2,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    top: (SLIDER_HEIGHT - 6) / 2,
+    height: 6, // 6px tall track (was 4px)
+    borderRadius: 3,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
   },
   sliderFilled: {
     position: 'absolute',
     left: 0,
-    top: (SLIDER_HEIGHT - 4) / 2,
-    height: 4,
-    borderRadius: 2,
+    top: (SLIDER_HEIGHT - 6) / 2,
+    height: 6, // 6px tall track
+    borderRadius: 3,
   },
   sliderThumb: {
     position: 'absolute',
-    top: (SLIDER_HEIGHT - 14) / 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    top: (SLIDER_HEIGHT - 18) / 2,
+    width: 18, // 18px diameter thumb (was 14px)
+    height: 18,
+    borderRadius: 9,
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -624,14 +639,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
   },
 
   // Shared
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },

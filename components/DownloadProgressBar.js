@@ -1,86 +1,98 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
+import { COLORS, RADII, FONTS } from '../constants/Theme';
+import { Download } from 'lucide-react-native';
 
-export function DownloadProgressBar({ progress }) {
-  const animWidth = useRef(new Animated.Value(0)).current;
+export const DownloadProgressBar = ({ progress }) => {
+  const animatedWidth = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  const percent = progress?.percent ?? (typeof progress === 'number' ? Math.round(progress * 100) : 0);
+  const progressDecimal = percent / 100;
 
   useEffect(() => {
-    Animated.timing(animWidth, {
-      toValue: progress?.percent || 0,
-      duration: 300,
+    Animated.spring(animatedWidth, {
+      toValue: Math.min(1, progressDecimal),
       useNativeDriver: false,
+      friction: 8,
+      tension: 40,
     }).start();
-  }, [progress?.percent]);
+  }, [progressDecimal]);
 
-  if (!progress) return null;
-
-  const { percent, downloadedMB, totalMB } = progress;
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 0.6, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, []);
 
   return (
     <View style={styles.container}>
-      {/* Top row: label + percentage */}
-      <View style={styles.topRow}>
-        <Text style={styles.label}>DOWNLOADING...</Text>
+      <View style={styles.header}>
+        <Animated.View style={{ opacity: pulseAnim }}>
+          <Download color={COLORS.primary} size={16} />
+        </Animated.View>
+        <Text style={styles.label}>Saving to device...</Text>
         <Text style={styles.percent}>{percent}%</Text>
       </View>
-
-      {/* Progress bar */}
-      <View style={styles.barBg}>
+      <View style={styles.track}>
         <Animated.View
           style={[
-            styles.barFill,
+            styles.fill,
             {
-              width: animWidth.interpolate({
-                inputRange: [0, 100],
+              width: animatedWidth.interpolate({
+                inputRange: [0, 1],
                 outputRange: ['0%', '100%'],
               }),
             },
           ]}
         />
       </View>
-
-      {/* Bottom row: MB downloaded / total */}
-      <View style={styles.bottomRow}>
-        <Text style={styles.mbText}>
-          {downloadedMB} MB / {totalMB} MB
-        </Text>
-        <Text style={styles.mbText}>
-          {totalMB > 0 ? `${(totalMB - downloadedMB).toFixed(1)} MB left` : ''}
-        </Text>
-      </View>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#1a1a2e',
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 12,
-    gap: 8,
+    backgroundColor: COLORS.amberGlass,
+    borderRadius: RADII.lg,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.amberBorder,
+    marginTop: 14,
   },
-  topRow: {
+  header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
   },
-  label: { color: '#aaa', fontSize: 12, fontWeight: '600', letterSpacing: 1 },
-  percent: { color: '#E91E63', fontSize: 16, fontWeight: '700' },
-  barBg: {
+  label: {
+    color: COLORS.textSecondary,
+    fontSize: FONTS.sm,
+    fontWeight: '600',
+    flex: 1,
+  },
+  percent: {
+    color: COLORS.primary,
+    fontSize: FONTS.md,
+    fontWeight: '800',
+  },
+  track: {
     height: 6,
-    backgroundColor: '#333',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 3,
     overflow: 'hidden',
   },
-  barFill: {
+  fill: {
     height: '100%',
-    backgroundColor: '#E91E63',
+    backgroundColor: COLORS.primary,
     borderRadius: 3,
   },
-  bottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  mbText: { color: '#666', fontSize: 11 },
 });
+
+export default DownloadProgressBar;

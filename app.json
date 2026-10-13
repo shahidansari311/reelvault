@@ -37,7 +37,6 @@
         "android.permission.WAKE_LOCK"
       ],
       "package": "com.shahid310.reelvault",
-      "usesCleartextTraffic": true,
       "intentFilters": [
         {
           "action": "SEND",

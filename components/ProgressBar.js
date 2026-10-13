@@ -1,54 +1,41 @@
-import React from 'react';
-import { StyleSheet, View, Text, Animated, Easing } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Animated } from 'react-native';
+import { COLORS, RADII, FONTS } from '../constants/Theme';
 
-import { COLORS } from '../constants/Theme';
+export const ProgressBar = ({ progress = 0, label = 'Processing...' }) => {
+  const animatedWidth = useRef(new Animated.Value(0)).current;
 
-export const ProgressBar = ({ progress, label }) => {
-  const animatedWidth = React.useRef(new Animated.Value(0)).current;
-  const shimmerAnim = React.useRef(new Animated.Value(0)).current;
+  const validProgress = !progress || isNaN(progress) ? 0 : Math.min(1, Math.max(0, progress));
 
-  React.useEffect(() => {
-    const validProgress = isNaN(progress) || !isFinite(progress) ? 0 : Math.min(1, Math.max(0, progress));
-    Animated.timing(animatedWidth, {
+  useEffect(() => {
+    Animated.spring(animatedWidth, {
       toValue: validProgress,
-      duration: 400,
-      easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
+      friction: 8,
+      tension: 40,
     }).start();
-  }, [progress]);
+  }, [validProgress]);
 
-  // Subtle shimmer loop
-  React.useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmerAnim, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
-        Animated.timing(shimmerAnim, { toValue: 0, duration: 1200, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, []);
-
-  const width = animatedWidth.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0%', '100%'],
-  });
-
-  const shimmerOpacity = shimmerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.7, 1],
-  });
-
-  const displayProgress = Math.round((isNaN(progress) ? 0 : Math.min(1, Math.max(0, progress))) * 100);
+  const percent = Math.round(validProgress * 100);
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.label}>{label}</Text>
-        <Text style={styles.percentage}>{displayProgress}%</Text>
+        <Text style={styles.percent}>{percent}%</Text>
       </View>
       <View style={styles.track}>
-        <Animated.View style={[styles.fill, { width, opacity: shimmerOpacity }]} />
+        <Animated.View
+          style={[
+            styles.fill,
+            {
+              width: animatedWidth.interpolate({
+                inputRange: [0, 1],
+                outputRange: ['0%', '100%'],
+              }),
+            },
+          ]}
+        />
       </View>
     </View>
   );
@@ -56,29 +43,31 @@ export const ProgressBar = ({ progress, label }) => {
 
 const styles = StyleSheet.create({
   container: {
-    width: '100%',
-    marginVertical: 15,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADII.lg,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.amberBorder,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    alignItems: 'center',
+    marginBottom: 10,
   },
   label: {
     color: COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    fontSize: FONTS.sm,
+    fontWeight: '600',
   },
-  percentage: {
+  percent: {
     color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: 'bold',
+    fontSize: FONTS.md,
+    fontWeight: '800',
   },
   track: {
     height: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 3,
     overflow: 'hidden',
   },
@@ -88,3 +77,5 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
 });
+
+export default ProgressBar;
