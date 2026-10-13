@@ -1,5 +1,6 @@
-import React, { useRef, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Animated, StatusBar, Image } from 'react-native';
+import React, { useRef, useEffect, useCallback } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, Animated, StatusBar, Image, BackHandler } from 'react-native';
+import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import { ChevronLeft } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SPACING } from '../constants/Theme';
@@ -7,10 +8,16 @@ import VideoPlayer from '../components/VideoPlayer';
 
 export default function InAppPlayerScreen({ navigation, route }) {
   const { filepath, title } = route.params;
+  const isFocused = useIsFocused();
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Determine if the media is a video based on common video extensions or 'video' in the path
-  const isVideo = filepath && (filepath.toLowerCase().match(/\.(mp4|mov|m4v|webm)$/i) || filepath.toLowerCase().includes('video'));
+  // Determine media kind: video, audio (mp3/m4a from YouTube), or image.
+  // Audio must go through VideoPlayer (expo-video plays audio sources) —
+  // previously it fell into the Image branch and silently showed nothing.
+  const lowerPath = (filepath || '').toLowerCase();
+  const isVideo = filepath && (lowerPath.match(/\.(mp4|mov|m4v|webm|mkv|3gp)$/i) || lowerPath.includes('video'));
+  const isAudio = filepath && !!lowerPath.match(/\.(mp3|m4a|wav|aac|opus|ogg|flac|wma)$/i);
+  const isPlayable = isVideo || isAudio;
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -19,6 +26,22 @@ export default function InAppPlayerScreen({ navigation, route }) {
       useNativeDriver: true,
     }).start();
   }, []);
+
+  // Player is only ever opened from History (downloads) — going back
+  // (UI button or Android hardware key) must return there, never Home.
+  const goBackToHistory = useCallback(() => {
+    navigation.navigate('History');
+  }, [navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        goBackToHistory();
+        return true;
+      });
+      return () => sub.remove();
+    }, [goBackToHistory])
+  );
 
   return (
     <View style={styles.container}>
@@ -33,7 +56,7 @@ export default function InAppPlayerScreen({ navigation, route }) {
           colors={['rgba(0,0,0,0.8)', 'transparent']}
           style={StyleSheet.absoluteFill}
         />
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.backBtn} onPress={goBackToHistory}>
           <ChevronLeft color={COLORS.text} size={28} />
         </TouchableOpacity>
         <View style={styles.titleContainer}>
@@ -42,25 +65,28 @@ export default function InAppPlayerScreen({ navigation, route }) {
         </View>
       </Animated.View>
       
-      <Animated.View style={[styles.playerContainer, { opacity: fadeAnim, transform: [{ scale: fadeAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) }] }]}>
-        <View style={styles.videoWrapper}>
-          {isVideo ? (
+      <Animated.View style={[styles.playerContainer, { opacity: fadeAnim }]}>
+        {isPlayable ? (
+          /* Same 9:16 presentation as the Reels tab preview — a bounded box
+             the expo-video surface can lay out inside reliably. */
+          <View style={styles.videoWrapper}>
             <VideoPlayer
               uri={filepath}
               title={title || 'Media Vault'}
-              shouldPlay
+              shouldPlay={isFocused}
               isLooping={false}
+              aspectRatio={9 / 16}
               accentColor='#FFC107'
-              style={{ width: '100%', height: '100%', borderRadius: 0 }}
+              style={styles.playerBox}
             />
-          ) : (
-            <Image
-              source={{ uri: filepath }}
-              style={styles.fullPlayer}
-              resizeMode="contain"
-            />
-          )}
-        </View>
+          </View>
+        ) : (
+          <Image
+            source={{ uri: filepath }}
+            style={styles.fullPlayer}
+            resizeMode="contain"
+          />
+        )}
       </Animated.View>
     </View>
   );
@@ -114,11 +140,20 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
   },
   videoWrapper: {
     width: '100%',
-    height: '100%',
+    aspectRatio: 9 / 16, // bounded box — same approach as Reels preview
+    maxWidth: 500,
     backgroundColor: '#000',
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  playerBox: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 0,
   },
   fullPlayer: {
     width: '100%',

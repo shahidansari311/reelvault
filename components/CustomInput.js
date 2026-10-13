@@ -1,29 +1,13 @@
-import React, { useState, useRef } from 'react';
-import { View, TextInput, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import React, { useState } from 'react';
+import { View, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { X } from 'lucide-react-native';
 import { COLORS, RADII, FONTS } from '../constants/Theme';
 
 export const CustomInput = ({ placeholder, value, onChangeText, onClear, icon: Icon, suffix }) => {
   const [focused, setFocused] = useState(false);
-  const borderAnim = useRef(new Animated.Value(0)).current;
-
-  const handleFocus = () => {
-    setFocused(true);
-    Animated.timing(borderAnim, { toValue: 1, duration: 200, useNativeDriver: false }).start();
-  };
-
-  const handleBlur = () => {
-    setFocused(false);
-    Animated.timing(borderAnim, { toValue: 0, duration: 200, useNativeDriver: false }).start();
-  };
-
-  const borderColor = borderAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [COLORS.border, COLORS.primary],
-  });
 
   return (
-    <Animated.View style={[styles.container, { borderColor }]}>
+    <View style={[styles.container, focused && styles.containerFocused]}>
       {Icon && <Icon color={focused ? COLORS.primary : COLORS.textMuted} size={16} style={styles.icon} />}
       <TextInput
         style={styles.input}
@@ -42,7 +26,7 @@ export const CustomInput = ({ placeholder, value, onChangeText, onClear, icon: I
         </TouchableOpacity>
       )}
       {suffix && (typeof suffix === 'function' ? suffix() : suffix)}
-    </Animated.View>
+    </View>
   );
 };
 
@@ -57,6 +41,13 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     marginBottom: 12,
     gap: 8,
+    borderColor: COLORS.border,
+  },
+  // Focus state via styles only — an Animated border on the container
+  // forces layout on every keystroke and makes the keyboard close after
+  // each letter.
+  containerFocused: {
+    borderColor: COLORS.primary,
   },
   icon: {
     flexShrink: 0,

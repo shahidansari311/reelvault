@@ -1,17 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Keyboard,
   Share,
   ScrollView,
   Animated,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { showAlert } from '../utils/alert';
+import { shareMediaFile } from '../utils/shareFile';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
 import { 
@@ -116,10 +117,48 @@ export default function ReelDownloaderScreen({ navigation, route }) {
   const [history, setHistory] = useState([]);
   const [error, setError] = useState(null);
 
+  // Tracked auto-fetch timer: cleared on unmount and when the user types,
+  // so a stale share-link fetch can't leak or overwrite manual input.
+  const autoFetchTimeoutRef = React.useRef(null);
+  const clearPendingAutoFetch = () => {
+    if (autoFetchTimeoutRef.current) {
+      clearTimeout(autoFetchTimeoutRef.current);
+      autoFetchTimeoutRef.current = null;
+    }
+  };
+  useEffect(() => () => clearPendingAutoFetch(), []);
+
+  // Copy a reel link in Instagram, open the app → link is fetched straight away.
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isFocused) return;
+      // Let an explicit share intent / autoPaste win if one is present.
+      if (route.params?.initialUrl || route.params?.autoPaste) return;
+      if (url) return; // don't stomp on an already-loaded result
+      let cancelled = false;
+      (async () => {
+        try {
+          const text = await Clipboard.getStringAsync();
+          if (cancelled || !text || !text.includes('instagram.com/')) return;
+          setUrl(text);
+          setError(null);
+          scheduleAutoFetch(text);
+        } catch (e) {
+          console.warn('clipboard read failed:', e);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [isFocused, route.params?.initialUrl, route.params?.autoPaste, url])
+  );
+
   useEffect(() => {
     if (route.params?.initialUrl) {
       setUrl(route.params.initialUrl);
-      setTimeout(() => {
+      clearPendingAutoFetch();
+      autoFetchTimeoutRef.current = setTimeout(() => {
+        autoFetchTimeoutRef.current = null;
         if (route.params.initialUrl) {
           handleFetchUrl(route.params.initialUrl);
         }
@@ -251,7 +290,7 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     );
     
     if (result.success) {
-      Alert.alert('Saved!', 'Video saved to your gallery.');
+      showAlert('Saved!', 'Video saved to your gallery.');
     }
     setDownloading(false);
     setDownloadProgress(null);
@@ -267,6 +306,10 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     } catch (error) {
       console.error(error);
     }
+  };
+
+  const handleShareFile = async () => {
+    await shareMediaFile(reelData?.videoUrl, reelData?.title || 'Instagram Reel');
   };
 
   return (
@@ -299,10 +342,14 @@ export default function ReelDownloaderScreen({ navigation, route }) {
             placeholder="Paste Instagram Reel link"
             value={url}
             onChangeText={(text) => {
+              clearPendingAutoFetch();
               setUrl(text);
               setError(null);
             }}
-            onClear={() => setUrl('')}
+            onClear={() => {
+              clearPendingAutoFetch();
+              setUrl('');
+            }}
             icon={LinkIcon}
             suffix={() => (
               <TouchableOpacity style={styles.inlinePasteBtn} onPress={handlePaste}>

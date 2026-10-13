@@ -7,11 +7,11 @@ import {
   TouchableOpacity,
   ScrollView,
   Linking,
-  Alert,
   Animated,
   Keyboard,
   ActivityIndicator,
   Dimensions,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -29,12 +29,15 @@ import {
   Code2,
   Star,
   MessageSquare,
-  ChevronRight,
   ExternalLink,
   User,
-  Sparkles,
+  Briefcase,
+  Folder,
+  Trophy,
+  ChevronRight,
 } from 'lucide-react-native';
 import { COLORS, SPACING, SHADOWS } from '../constants/Theme';
+import { showAlert } from '../utils/alert';
 import { submitFeedback } from '../services/api';
 
 const { width } = Dimensions.get('window');
@@ -88,9 +91,17 @@ const ContactPill = ({ icon: Icon, text, onPress }) => (
 // ─── Stat Card ───
 const StatCard = ({ label, value, icon: Icon }) => (
   <View style={styles.statCard}>
-    <Icon color={COLORS.primary} size={18} />
+    <Icon color={COLORS.primary} size={20} />
     <Text style={styles.statValue}>{value}</Text>
     <Text style={styles.statLabel}>{label}</Text>
+  </View>
+);
+
+// ─── Highlight Bullet ───
+const Bullet = ({ text }) => (
+  <View style={styles.bulletRow}>
+    <View style={styles.bulletDot} />
+    <Text style={styles.bulletText}>{text}</Text>
   </View>
 );
 
@@ -113,16 +124,22 @@ export default function AboutScreen({ navigation }) {
   }, []);
 
   const socialLinks = [
-    { icon: Link, label: 'Instagram', sublabel: '@_shahid_129_', url: 'https://instagram.com/_shahid_129_', color: '#E1306C' },
+    { icon: Code, label: 'GitHub', sublabel: 'shahidansari111', url: 'https://github.com/shahidansari111', color: '#E6EDF3' },
     { icon: Link, label: 'LinkedIn', sublabel: 'Shahid Ansari', url: 'https://www.linkedin.com/in/shahid-ansari-433449327/', color: '#0A66C2' },
-    { icon: Code, label: 'GitHub', sublabel: 'shahidansari311', url: 'https://github.com/shahidansari311', color: '#E6EDF3' },
+    { icon: Code2, label: 'LeetCode', sublabel: 'shahid310 • 1584 rated', url: 'https://leetcode.com/u/shahid310/', color: '#FFA116' },
     { icon: Globe, label: 'Portfolio', sublabel: 'View My Work', url: 'https://shahidansari.vercel.app/', color: '#8B5CF6' },
     { icon: AtSign, label: 'X (Twitter)', sublabel: '@Shahid_310_', url: 'https://x.com/Shahid_310_', color: '#1DA1F2' },
+    { icon: Link, label: 'Instagram', sublabel: '@_shahid_129_', url: 'https://instagram.com/_shahid_129_', color: '#E1306C' },
+  ];
+
+  const skills = [
+    'React Native', 'Expo', 'TypeScript', 'Node.js', 'Express',
+    'MongoDB', 'PostgreSQL', 'Prisma', 'REST APIs', 'Docker', 'AWS', 'Git',
   ];
 
   const handleSubmitFeedback = async () => {
     if (!feedbackMessage.trim()) {
-      Alert.alert('Missing Feedback', 'Please write your feedback before submitting.');
+      showAlert('Missing Feedback', 'Please write your feedback before submitting.');
       return;
     }
 
@@ -145,16 +162,16 @@ export default function AboutScreen({ navigation }) {
       setFeedbackRating(0);
 
       if (result?.emailSent) {
-        Alert.alert('Thank You! 🎉', 'Your feedback has been submitted and emailed successfully!');
+        showAlert('Thank You! 🎉', 'Your feedback has been submitted and emailed successfully!');
       } else {
-        Alert.alert('Thank You! 🎉', 'Your feedback has been saved. I\'ll see it soon!');
+        showAlert('Thank You! 🎉', 'Your feedback has been saved. I\'ll see it soon!');
       }
     } catch (err) {
       const serverMsg = err?.response?.data?.error;
       if (err?.response) {
-        Alert.alert('Oops!', serverMsg || 'Could not submit feedback right now. Please try again later.');
+        showAlert('Oops!', serverMsg || 'Could not submit feedback right now. Please try again later.');
       } else {
-        Alert.alert('No Connection', 'Could not reach the server. Please check your internet and try again.');
+        showAlert('No Connection', 'Could not reach the server. Please check your internet and try again.');
       }
     } finally {
       setSubmitting(false);
@@ -187,14 +204,32 @@ export default function AboutScreen({ navigation }) {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 150 }}
       >
-        {/* Developer Hero Card */}
-        <Animated.View style={[styles.heroCard, { opacity: heroOpacity, transform: [{ scale: heroScale }] }]}>
+        {/* App Hero */}
+        <Animated.View style={[styles.appHero, { opacity: heroOpacity, transform: [{ scale: heroScale }] }]}>
           <LinearGradient
-            colors={['rgba(139, 92, 246, 0.12)', 'rgba(139, 92, 246, 0.03)', 'transparent']}
+            colors={['rgba(255, 193, 7, 0.14)', 'rgba(255, 193, 7, 0.03)', 'transparent']}
             style={StyleSheet.absoluteFill}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           />
+          <Image source={require('../assets/logo.png')} style={styles.appLogo} />
+          <Text style={styles.appName}>SaveX</Text>
+          <Text style={styles.appTagline}>Save Reels, Stories & Videos — beautifully.</Text>
+          <View style={styles.versionChip}>
+            <Text style={styles.versionChipText}>v1.0.0</Text>
+          </View>
+          <Text style={styles.appDesc}>
+            Your personal vault for Instagram reels, stories and YouTube videos.
+            Background downloads, in-app player and full offline history.
+          </Text>
+        </Animated.View>
+
+        {/* Developer Hero Card */}
+        <Animated.View style={[styles.heroCard, { opacity: heroOpacity }]}>
+          <View style={styles.sectionHeader}>
+            <User color={COLORS.primary} size={20} />
+            <Text style={styles.sectionTitle}>Developer</Text>
+          </View>
 
           {/* Avatar Circle */}
           <View style={styles.avatarContainer}>
@@ -211,37 +246,38 @@ export default function AboutScreen({ navigation }) {
 
           <Text style={styles.heroName}>Shahid Ansari</Text>
           <Text style={styles.heroRole}>Full-Stack Developer</Text>
+          <Text style={styles.heroSub}>3rd-year CS • PERN / MERN • React Native</Text>
 
           {/* Contact Pills */}
           <View style={styles.contactRow}>
             <ContactPill icon={MapPin} text="Ghaziabad, India" onPress={() => {}} />
-            <ContactPill icon={Phone} text="+91-8858369783" onPress={() => Linking.openURL('tel:+918858369783')} />
+            <ContactPill icon={Phone} text="+91-8858501783" onPress={() => Linking.openURL('tel:+918858501783')} />
           </View>
           <View style={styles.contactRow}>
-            <ContactPill icon={Mail} text="shahidansari945256@gmail.com" onPress={() => Linking.openURL('mailto:shahidansari945256@gmail.com')} />
+            <ContactPill icon={Mail} text="shahidansari292@gmail.com" onPress={() => Linking.openURL('mailto:shahidansari292@gmail.com')} />
           </View>
 
           {/* Stats Row */}
           <View style={styles.statsRow}>
-            <StatCard label="Stack" value="MERN" icon={Code2} />
-            <StatCard label="Projects" value="4+" icon={Star} />
-            <StatCard label="Focus" value="Web App" icon={Sparkles} />
+            <StatCard label="DSA Solved" value="850+" icon={Code2} />
+            <StatCard label="Client Apps" value="3+" icon={Star} />
+            <StatCard label="Contributor" value="GSSoC" icon={Heart} />
           </View>
         </Animated.View>
 
         {/* About Me Section */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
-            <User color={COLORS.primary} size={18} />
+            <User color={COLORS.primary} size={20} />
             <Text style={styles.sectionTitle}>About Me</Text>
           </View>
           <Text style={styles.bioText}>
-            Full-Stack Developer and Computer Science student with experience building MERN and PERN stack applications. 
-            Skilled in creating scalable web apps, real-time systems, and modern web apps. Passionate about software engineering 
-            and problem solving.
+            Full-Stack Developer and Computer Science student specialising in PERN/MERN
+            stacks, React Native and REST API design. Shipped a freelance real-estate
+            platform plus production-ready apps across fintech, banking and non-profits.
           </Text>
           <View style={styles.techChipsRow}>
-            {['React JS', 'Node.js', 'MongoDB', 'PostgreSQL', 'Express', 'Next.js'].map((tech) => (
+            {skills.map((tech) => (
               <View key={tech} style={styles.techChip}>
                 <Text style={styles.techChipText}>{tech}</Text>
               </View>
@@ -249,10 +285,45 @@ export default function AboutScreen({ navigation }) {
           </View>
         </View>
 
+        {/* Experience */}
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Briefcase color={COLORS.primary} size={20} />
+            <Text style={styles.sectionTitle}>Experience</Text>
+          </View>
+          <Text style={styles.expRole}>Mobile App & Backend Intern</Text>
+          <Text style={styles.expCompany}>Silver Vista Property LLP • Aug – Oct 2025</Text>
+          <View style={{ marginTop: 12 }}>
+            <Bullet text="Built React Native (Expo) + TypeScript apps for 3 clients" />
+            <Bullet text="Node.js + Express API with Prisma, PostgreSQL & OTP login" />
+            <Bullet text="CI/CD releases with GitHub Actions, deployed on AWS" />
+          </View>
+        </View>
+
+        {/* Projects */}
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Folder color={COLORS.primary} size={20} />
+            <Text style={styles.sectionTitle}>Featured Projects</Text>
+          </View>
+          <View style={styles.projectCard}>
+            <Text style={styles.projectName}>PaisaPilot</Text>
+            <Text style={styles.projectDesc}>Personal finance & expense splitting app</Text>
+          </View>
+          <View style={styles.projectCard}>
+            <Text style={styles.projectName}>Bank Ledger System</Text>
+            <Text style={styles.projectDesc}>RESTful banking API with auth & ledgers</Text>
+          </View>
+          <View style={styles.achievementRow}>
+            <Trophy color={COLORS.primary} size={16} />
+            <Text style={styles.achievementText}>SAH 2.0 Hackathon — 1st Runner-Up</Text>
+          </View>
+        </View>
+
         {/* Social Links */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
-            <Globe color={COLORS.primary} size={18} />
+            <Globe color={COLORS.primary} size={20} />
             <Text style={styles.sectionTitle}>Connect With Me</Text>
           </View>
           {socialLinks.map((link, index) => (
@@ -263,7 +334,7 @@ export default function AboutScreen({ navigation }) {
         {/* Feedback Form */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
-            <MessageSquare color={COLORS.primary} size={18} />
+            <MessageSquare color={COLORS.primary} size={20} />
             <Text style={styles.sectionTitle}>Send Feedback</Text>
           </View>
           <Text style={styles.feedbackHint}>
@@ -361,10 +432,20 @@ export default function AboutScreen({ navigation }) {
           )}
         </View>
 
+        {/* How to reach About */}
+        <TouchableOpacity
+          style={styles.homeHint}
+          onPress={() => navigation.navigate('Home')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.homeHintText}>Back to Home</Text>
+          <ChevronRight color={COLORS.primary} size={16} />
+        </TouchableOpacity>
+
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>Built with <Text style={{ color: '#FF6B6B' }}>❤️</Text> by Shahid Ansari</Text>
-          <Text style={styles.footerSub}>SaveX v1.3.0</Text>
+          <Text style={styles.footerSub}>SaveX v1.0.0</Text>
         </View>
       </ScrollView>
     </LinearGradient>
@@ -395,9 +476,63 @@ const styles = StyleSheet.create({
   },
   navTitle: {
     color: COLORS.text,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '900',
     letterSpacing: 2,
+  },
+
+  // App Hero
+  appHero: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 32,
+    padding: 30,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: COLORS.amberBorder,
+    alignItems: 'center',
+    overflow: 'hidden',
+    ...SHADOWS.primary,
+  },
+  appLogo: {
+    width: 84,
+    height: 84,
+    borderRadius: 24,
+    marginBottom: 14,
+  },
+  appName: {
+    color: COLORS.text,
+    fontSize: 42,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  appTagline: {
+    color: COLORS.primary,
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  versionChip: {
+    backgroundColor: COLORS.amberGlass,
+    borderWidth: 1,
+    borderColor: COLORS.amberBorder,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    marginTop: 12,
+  },
+  versionChipText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  appDesc: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 14,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginTop: 14,
   },
 
   // Hero Card
@@ -405,7 +540,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface,
     borderRadius: 32,
     padding: 28,
-    marginTop: 10,
+    marginTop: 20,
     borderWidth: 1,
     borderColor: COLORS.glassBorder,
     alignItems: 'center',
@@ -414,25 +549,26 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     marginBottom: 16,
+    marginTop: 14,
     position: 'relative',
   },
   avatarGradient: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 92,
+    height: 92,
+    borderRadius: 46,
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarText: {
-    fontSize: 30,
+    fontSize: 34,
     fontWeight: '900',
     color: '#000',
     letterSpacing: 2,
   },
   onlineDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: '#22C55E',
     position: 'absolute',
     bottom: 2,
@@ -442,16 +578,22 @@ const styles = StyleSheet.create({
   },
   heroName: {
     color: COLORS.text,
-    fontSize: 26,
+    fontSize: 32,
     fontWeight: '900',
     letterSpacing: 0.5,
   },
   heroRole: {
     color: COLORS.primary,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     letterSpacing: 1.5,
     textTransform: 'uppercase',
+    marginTop: 6,
+  },
+  heroSub: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
     marginTop: 4,
   },
 
@@ -468,14 +610,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.04)',
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
   },
   contactPillText: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 11,
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 12,
     marginLeft: 6,
     fontWeight: '600',
   },
@@ -496,7 +638,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     color: COLORS.text,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '900',
     marginTop: 6,
   },
@@ -513,7 +655,7 @@ const styles = StyleSheet.create({
   sectionCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 28,
-    padding: 24,
+    padding: 26,
     marginTop: 20,
     borderWidth: 1,
     borderColor: COLORS.glassBorder,
@@ -526,15 +668,15 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     color: COLORS.text,
-    fontSize: 18,
+    fontSize: 21,
     fontWeight: '800',
     marginLeft: 10,
     letterSpacing: 0.3,
   },
   bioText: {
-    color: 'rgba(255,255,255,0.65)',
-    fontSize: 14,
-    lineHeight: 22,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 15,
+    lineHeight: 24,
   },
   techChipsRow: {
     flexDirection: 'row',
@@ -544,17 +686,84 @@ const styles = StyleSheet.create({
   },
   techChip: {
     backgroundColor: 'rgba(139, 92, 246, 0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(139, 92, 246, 0.15)',
   },
   techChipText: {
     color: '#A78BFA',
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+
+  // Experience / Projects
+  expRole: {
+    color: COLORS.text,
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  expCompany: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 4,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+    gap: 10,
+  },
+  bulletDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.primary,
+    marginTop: 7,
+  },
+  bulletText: {
+    flex: 1,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  projectCard: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  projectName: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  projectDesc: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginTop: 3,
+  },
+  achievementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.amberGlass,
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: COLORS.amberBorder,
+    gap: 8,
+  },
+  achievementText: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
   },
 
   // Social Cards
@@ -569,28 +778,28 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.05)',
   },
   socialIconCircle: {
-    width: 42,
-    height: 42,
+    width: 44,
+    height: 44,
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
   socialLabel: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
   },
   socialSublabel: {
     color: COLORS.textSecondary,
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 2,
   },
 
   // Feedback
   feedbackHint: {
     color: 'rgba(255,255,255,0.45)',
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 21,
     marginBottom: 20,
   },
   ratingContainer: {
@@ -618,7 +827,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderRadius: 16,
     paddingHorizontal: 14,
-    height: 50,
+    height: 52,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
@@ -626,7 +835,7 @@ const styles = StyleSheet.create({
   feedbackInput: {
     flex: 1,
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 15,
     height: '100%',
   },
   submitBtn: {
@@ -643,7 +852,7 @@ const styles = StyleSheet.create({
   },
   submitBtnText: {
     color: '#000',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '900',
     letterSpacing: 1,
   },
@@ -656,24 +865,43 @@ const styles = StyleSheet.create({
   },
   thanksText: {
     color: 'rgba(255,255,255,0.5)',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
+  },
+
+  // Home hint
+  homeHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: COLORS.glassBorder,
+    gap: 4,
+  },
+  homeHintText: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: '700',
   },
 
   // Footer
   footer: {
     alignItems: 'center',
-    marginTop: 40,
+    marginTop: 32,
     marginBottom: 20,
   },
   footerText: {
-    color: 'rgba(255,255,255,0.3)',
-    fontSize: 13,
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 14,
     fontWeight: '600',
   },
   footerSub: {
-    color: 'rgba(255,255,255,0.15)',
-    fontSize: 11,
+    color: 'rgba(255,255,255,0.2)',
+    fontSize: 12,
     marginTop: 4,
     fontWeight: '700',
     letterSpacing: 1,

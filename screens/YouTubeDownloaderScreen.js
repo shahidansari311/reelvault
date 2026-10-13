@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Keyboard,
   ScrollView,
   Modal,
@@ -13,6 +12,8 @@ import {
   Linking,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { useIsFocused, useFocusEffect } from '@react-navigation/native';
+import { showAlert } from '../utils/alert';
 import {
   ArrowLeft,
   Link2 as LinkIcon,
@@ -25,6 +26,33 @@ import { DownloadProgressBar } from '../components/DownloadProgressBar';
 import { startBackgroundDownload } from '../services/backgroundDownload';
 import { fetchYouTubeInfo, requestYouTubeDownload } from '../services/api';
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRateLimited = (err) => {
+  const status = err?.response?.status;
+  return status === 429 || status === 502 || status === 503;
+};
+
+// Auto-retries rate-limit / server-busy failures with exponential backoff
+// (4s → 8s → 16s). Returns { data } or { error } — never throws.
+const withRateLimitRetry = async (fn, { retries = 3, onRetry } = {}) => {
+  let lastErr = null;
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return { data: await fn() };
+    } catch (err) {
+      lastErr = err;
+      if (!isRateLimited(err) || i === retries) break;
+      const delaySecs = 4 * 2 ** i;
+      try {
+        onRetry && onRetry(i + 1, retries + 1, delaySecs);
+      } catch (e) {}
+      await sleep(delaySecs * 1000);
+    }
+  }
+  return { error: lastErr };
+};
+
 export default function YouTubeDownloaderScreen({ navigation, route }) {
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [ytLoading, setYtLoading] = useState(false);
@@ -35,6 +63,17 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
   const [audioBitrate, setAudioBitrate] = useState('192');
   const [showFormatModal, setShowFormatModal] = useState(false);
 
+  // Tracked auto-fetch timer: cleared on unmount and when the user types,
+  // so a stale share-link fetch can't leak or overwrite manual input.
+  const autoFetchTimeoutRef = React.useRef(null);
+  const clearPendingAutoFetch = () => {
+    if (autoFetchTimeoutRef.current) {
+      clearTimeout(autoFetchTimeoutRef.current);
+      autoFetchTimeoutRef.current = null;
+    }
+  };
+  React.useEffect(() => () => clearPendingAutoFetch(), []);
+
   const validateYouTubeUrl = (u) => {
     const url = (u || '').trim();
     return /(youtube\.com|youtu\.be|youtube\.com\/shorts)\//i.test(url);
@@ -44,7 +83,9 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
     if (route?.params?.initialUrl) {
       setYoutubeUrl(route.params.initialUrl);
       const urlToFetch = route.params.initialUrl;
-      setTimeout(() => {
+      clearPendingAutoFetch();
+      autoFetchTimeoutRef.current = setTimeout(() => {
+        autoFetchTimeoutRef.current = null;
         handleFetchUrl(urlToFetch);
       }, 500);
     }
@@ -56,7 +97,7 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
       setYoutubeUrl(text);
       setYtError(null);
     } else {
-      Alert.alert('Nothing to Paste', 'No YouTube link found in your clipboard. Copy a YouTube link first.');
+      showAlert('Nothing to Paste', 'No YouTube link found in your clipboard. Copy a YouTube link first.');
     }
   };
 
@@ -66,7 +107,7 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
 
   const handleFetchUrl = async (urlToFetch) => {
     if (!validateYouTubeUrl(urlToFetch)) {
-      Alert.alert('Wrong Link', "That doesn't look like a YouTube link. Please paste a link from youtube.com or youtu.be.");
+      showAlert('Wrong Link', "That doesn't look like a YouTube link. Please paste a link from youtube.com or youtu.be.");
       return;
     }
     Keyboard.dismiss();
@@ -75,7 +116,17 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
     setYtInfo(null);
 
     try {
-      const data = await fetchYouTubeInfo(urlToFetch.trim());
+      const { data, error } = await withRateLimitRetry(
+        () => fetchYouTubeInfo(urlToFetch.trim()),
+        {
+          onRetry: (n, total, secs) =>
+            setYtError({
+              title: 'YouTube is Busy',
+              message: `Rate limited — automatic retry ${n}/${total} in ${secs}s…`,
+            }),
+        }
+      );
+      if (error) throw error;
       setYtInfo(data);
     } catch (err) {
       const serverData = err.response?.data;
@@ -89,7 +140,7 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
         message = serverData?.message || "That doesn't look like a YouTube link. Please check and try again.";
       } else if (status === 429) {
         title = serverData?.error || 'YouTube is Busy';
-        message = serverData?.message || 'YouTube is limiting our access right now. Please wait a minute and try again.';
+        message = serverData?.message || 'YouTube is limiting our access right now. We retried automatically a few times — please wait a minute and try again.';
       } else if (status === 503) {
         title = serverData?.error || 'Could Not Load Video';
         message = serverData?.message || "We're having trouble reaching YouTube right now. Please try again in a moment.";
@@ -109,12 +160,16 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
 
     const attempt = async () => {
       setShowFormatModal(false);
-      const payload = await requestYouTubeDownload({
-        url: youtubeUrl.trim(),
-        kind,
-        maxHeight: kind === 'video' ? maxHeight : undefined,
-        audioBitrate: kind === 'audio' ? audioBitrate : undefined,
-      });
+      // Silent auto-retry on 429/5xx before surfacing any error popup.
+      const { data: payload, error: reqError } = await withRateLimitRetry(() =>
+        requestYouTubeDownload({
+          url: youtubeUrl.trim(),
+          kind,
+          maxHeight: kind === 'video' ? maxHeight : undefined,
+          audioBitrate: kind === 'audio' ? audioBitrate : undefined,
+        })
+      );
+      if (reqError) throw reqError;
 
       if (!payload.downloadUrl) {
         throw new Error('The server did not return a download link. Please try again.');
@@ -133,7 +188,7 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
         }
       );
       if (result.success) {
-        Alert.alert('Saved!', `${label} saved to your gallery.`);
+        showAlert('Saved!', `${label} saved to your gallery.`);
       }
     };
 
@@ -152,13 +207,13 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
 
       if (status === 429) {
         title = serverData?.error || 'YouTube is Busy';
-        message = serverData?.message || 'YouTube is limiting our access right now. Please wait a minute and try again.';
+        message = serverData?.message || 'YouTube is limiting our access right now. We retried automatically a few times — please wait a minute and try again.';
       } else if (!err.response) {
         title = 'No Internet';
         message = 'Could not connect to the server. Please check your internet connection.';
       }
 
-      Alert.alert(title, message, [
+      showAlert(title, message, [
         { text: 'OK', style: 'cancel' },
         {
           text: 'Try Again',
@@ -169,7 +224,7 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
               await attempt();
             } catch (e2) {
               const retryMsg = e2.response?.data?.message || e2.message || "It still didn't work. Please try again later.";
-              Alert.alert('Still Not Working', retryMsg);
+              showAlert('Still Not Working', retryMsg);
             } finally {
               setYtDownloading(false);
               setYtDownloadProgress(null);
@@ -215,11 +270,13 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
             placeholder="Paste YouTube link"
             value={youtubeUrl}
             onChangeText={(text) => {
+              clearPendingAutoFetch();
               setYoutubeUrl(text);
               setYtError(null);
               setYtInfo(null);
             }}
             onClear={() => {
+              clearPendingAutoFetch();
               setYoutubeUrl('');
               setYtInfo(null);
             }}

@@ -5,7 +5,6 @@ import {
   Text,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Keyboard,
   Image,
   Dimensions,
@@ -15,6 +14,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
+import { showAlert } from '../utils/alert';
 import {
   Download,
   Link2 as LinkIcon,
@@ -115,7 +115,7 @@ export default function PostDownloaderScreen({ navigation }) {
     );
 
     if (success) {
-      Alert.alert('Saved!', 'Photo saved to your gallery.');
+      showAlert('Saved!', 'Photo saved to your gallery.');
     }
     setDownloading(false);
     setDownloadProgress(0);
@@ -142,7 +142,7 @@ export default function PostDownloaderScreen({ navigation }) {
     }
 
     setDownloadProgress(1);
-    Alert.alert('Saved!', `${images.length} photo(s) saved to your gallery.`);
+    showAlert('Saved!', `${images.length} photo(s) saved to your gallery.`);
     setDownloading(false);
     setDownloadProgress(0);
   };

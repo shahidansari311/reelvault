@@ -2,9 +2,24 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { getMediaLibrary } from './mediaLibrary';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Alert, Linking, NativeModules, NativeEventEmitter, Platform } from 'react-native';
+import { Linking, NativeModules, NativeEventEmitter, Platform } from 'react-native';
+import { showAlert } from './alert';
 
-const { NativeDownload } = NativeModules;
+// NativeDownload access is guarded: if the native module fails to register
+// (e.g. stale build), the property lookup itself throws — fall back to null
+// so the app boots and uses the expo-file-system path instead of redboxing.
+let NativeDownload = null;
+let nativeDownloadWarned = false;
+try {
+  NativeDownload = NativeModules?.NativeDownload ?? null;
+} catch (e) {
+  // Expected on phone builds predating the native fix — downloads fall
+  // back automatically. Single quiet line so the console stays clean.
+  if (!nativeDownloadWarned) {
+    nativeDownloadWarned = true;
+    console.log('NativeDownload unavailable, using fallback downloads.');
+  }
+}
 
 // Event emitter for listening to native download progress/completion
 let downloadEmitter = null;
@@ -90,7 +105,7 @@ export const downloadFile = async (url, fileName, onProgress, meta = null) => {
     // Expo fallback path — needs the native media-library module.
     const MediaLibrary = getMediaLibrary();
     if (!MediaLibrary) {
-      Alert.alert(
+      showAlert(
         'Update Required',
         'Saving to the gallery needs a fresh app build. Please install the latest development build.'
       );
@@ -100,7 +115,7 @@ export const downloadFile = async (url, fileName, onProgress, meta = null) => {
     // Check if permission was already granted at launch
     const { status } = await MediaLibrary.getPermissionsAsync(true);
     if (status !== 'granted') {
-      Alert.alert(
+      showAlert(
         'Permission Required',
         'Storage access is needed to save files. Please enable it in Settings.',
         [
@@ -116,7 +131,7 @@ export const downloadFile = async (url, fileName, onProgress, meta = null) => {
 
   } catch (error) {
     console.error('Download error:', error);
-    Alert.alert('Download Did Not Work', 'Something went wrong while saving the file. Please check your internet connection and try again.');
+    showAlert('Download Did Not Work', 'Something went wrong while saving the file. Please check your internet connection and try again.');
     return false;
   }
 };
@@ -168,7 +183,7 @@ async function startNativeBackgroundDownload(url, fileName, onProgress, meta) {
             }
             resolve(true);
           } else {
-            Alert.alert('Download Failed', 'The file could not be saved. Please try again.');
+            showAlert('Download Failed', 'The file could not be saved. Please try again.');
             resolve(false);
           }
         });
@@ -190,9 +205,17 @@ async function startNativeBackgroundDownload(url, fileName, onProgress, meta) {
       cleanup();
       console.error('Native download error:', error);
 
-      // Fallback: try the legacy fire-and-forget method
+      // Fallback: retry once with default mime/subdir via the promise API
+      // (the old 3-arg overload was removed — TurboModules forbid duplicates)
       try {
-        NativeDownload.startDownload(url, fileName, title);
+        const retryAudio = fileName.endsWith('.mp3') || fileName.endsWith('.m4a');
+        await NativeDownload.startDownload(
+          url,
+          fileName,
+          title,
+          retryAudio ? 'audio/mpeg' : 'video/mp4',
+          'SaveX'
+        );
         if (onProgress) onProgress(1);
         if (meta) {
           await saveToHistory(meta, url, fileName, 0, `file:///storage/emulated/0/Download/SaveX/${fileName}`);

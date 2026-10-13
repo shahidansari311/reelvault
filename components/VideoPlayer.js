@@ -24,6 +24,7 @@ import {
   RotateCcw,
   Volume2,
   VolumeX,
+  Expand,
 } from 'lucide-react-native';
 import { COLORS } from '../constants/Theme';
 
@@ -55,6 +56,12 @@ export default function VideoPlayer({
   const [seekPosition, setSeekPosition] = useState(0);
   const [sliderWidth, setSliderWidth] = useState(SCREEN_WIDTH - 120);
   const [didFinish, setDidFinish] = useState(false);
+  // Fit mode: contain shows the whole frame (never cropped). User can
+  // cycle contain → cover → fill from the bottom bar if a video looks off.
+  const [fitMode, setFitMode] = useState('contain');
+  const cycleFitMode = () => {
+    setFitMode((f) => (f === 'contain' ? 'cover' : f === 'cover' ? 'fill' : 'contain'));
+  };
 
   // Animations
   const controlsOpacity = useRef(new Animated.Value(1)).current;
@@ -76,6 +83,16 @@ export default function VideoPlayer({
     if (player) player.loop = isLooping;
   }, [player, isLooping]);
 
+  // Belt & suspenders: hard-stop audio when this component unmounts,
+  // so playback can never leak past the screen's lifetime.
+  useEffect(() => {
+    return () => {
+      try {
+        player?.pause();
+      } catch (e) {}
+    };
+  }, [player]);
+
   // React to shouldPlay changes
   useEffect(() => {
     if (!player) return;
@@ -94,17 +111,25 @@ export default function VideoPlayer({
     }
   }, [shouldPlay, player, didFinish, isLooping]);
 
-  // React to URI changes (useVideoPlayer does not auto-swap the source)
+  // React to URI changes (useVideoPlayer does not auto-swap the source).
+  // Async swap keeps the UI thread free; play once the new source is ready.
   const lastUri = useRef(uri);
   useEffect(() => {
     if (player && uri && lastUri.current !== uri) {
       lastUri.current = uri;
-      try {
-        player.replace({ uri });
-        if (shouldPlay) player.play();
-      } catch (e) {
-        console.warn('VideoPlayer source replace error:', e);
-      }
+      setDidFinish(false);
+      Promise.resolve()
+        .then(() => player.replaceAsync({ uri }))
+        .then(() => {
+          if (shouldPlay) {
+            try {
+              player.play();
+            } catch (e) {}
+          }
+        })
+        .catch((e) => {
+          console.warn('VideoPlayer source replace error:', e);
+        });
     }
   }, [uri, player, shouldPlay]);
 
@@ -128,16 +153,24 @@ export default function VideoPlayer({
     if (!player?.loop) setDidFinish(true);
   });
 
-  // Reset finished flag when playback resumes
+  // Force controls back on when a non-looping video ends (replay button lives there)
   useEffect(() => {
-    if (playingChange?.isPlaying) setDidFinish(false);
-  }, [playingChange?.isPlaying]);
+    if (didFinish) {
+      setShowControls(true);
+      Animated.timing(controlsOpacity, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [didFinish, controlsOpacity]);
 
   // Derived state (same names as before so the UI below is untouched)
   const isPlaying = playingChange?.isPlaying ?? false;
   const status = statusChange?.status ?? 'loading';
   const isLoaded = status === 'readyToPlay';
-  const isBuffering = status === 'loading';
+  const isError = status === 'error';
+  const isBuffering = status === 'loading' && !isError;
   const isMuted = mutedChange?.muted ?? false;
   const duration = player?.duration ?? 0;
   const livePosition = timeUpdate?.currentTime ?? player?.currentTime ?? 0;
@@ -322,26 +355,38 @@ export default function VideoPlayer({
   };
 
   // ─── Render ────────────────────────────────────────────────────
+  // Fallback 16:9 only when caller provides nothing. Downloader/Stories pass
+  // undefined on purpose — the container must own the size there.
+  const computedAspectRatio =
+    typeof aspectRatio === 'number' && aspectRatio > 0 ? aspectRatio : 16 / 9;
+
   const containerStyle = fullscreen
     ? styles.fullscreenContainer
-    : [styles.container, { aspectRatio }, style];
+    : [
+        styles.container,
+        { aspectRatio: computedAspectRatio },
+        style,
+      ];
 
   return (
     <View style={containerStyle}>
       {fullscreen && <StatusBar hidden />}
 
-      {/* Video Layer */}
-      <TouchableWithoutFeedback onPress={toggleControls}>
-        <View style={styles.videoLayer}>
-          <VideoView
-            player={player}
-            style={styles.video}
-            contentFit={fullscreen ? 'contain' : 'cover'}
-            nativeControls={false}
-            allowsFullscreen={false}
-          />
-        </View>
-      </TouchableWithoutFeedback>
+      {/* Video Layer — transparent catcher sits ABOVE the native surface.
+          SurfaceView eats touches, so taps would never reach a parent
+          wrapper (controls auto-hide with no way to bring them back). */}
+      <View style={styles.videoLayer}>
+        <VideoView
+          player={player}
+          style={styles.video}
+          contentFit={fitMode}
+          nativeControls={false}
+          allowsFullscreen={false}
+        />
+        <TouchableWithoutFeedback onPress={toggleControls}>
+          <View style={StyleSheet.absoluteFill} />
+        </TouchableWithoutFeedback>
+      </View>
 
       {/* Buffering: semi-transparent overlay with small amber ActivityIndicator (not blocking) */}
       {isBuffering && isLoaded && (
@@ -361,8 +406,14 @@ export default function VideoPlayer({
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           />
-          <ActivityIndicator size="large" color={accentColor} />
-          <Text style={styles.loadingText}>Loading video...</Text>
+          {isError ? (
+            <Text style={styles.loadingText}>Couldn't load this video</Text>
+          ) : (
+            <>
+              <ActivityIndicator size="large" color={accentColor} />
+              <Text style={styles.loadingText}>Loading video...</Text>
+            </>
+          )}
         </Animated.View>
       )}
 
@@ -416,7 +467,7 @@ export default function VideoPlayer({
             </View>
           </LinearGradient>
 
-          {/* Center Controls */}
+          {/* Center area: tap to toggle controls */}
           <TouchableWithoutFeedback onPress={toggleControls}>
             <View style={styles.centerControls}>
               {/* Skip Back: 44px circle */}
@@ -509,6 +560,17 @@ export default function VideoPlayer({
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               >
                 <RotateCcw color="#FFF" size={16} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.iconBtn,
+                  fitMode !== 'contain' && { backgroundColor: 'rgba(255, 193, 7, 0.2)' },
+                ]}
+                onPress={cycleFitMode}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Expand color={fitMode !== 'contain' ? accentColor : '#FFF'} size={16} />
               </TouchableOpacity>
 
               <TouchableOpacity

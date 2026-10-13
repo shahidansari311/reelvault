@@ -6,9 +6,9 @@ import {
   TouchableOpacity,
   FlatList,
   Image,
-  Alert,
 } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
+import { showAlert } from '../utils/alert';
 import * as FileSystem from 'expo-file-system/legacy';
 import { 
   ArrowLeft,
@@ -17,9 +17,11 @@ import {
   Download, 
   Video, 
   FolderOpen,
+  Share2,
 } from 'lucide-react-native';
 import { COLORS, RADII, SHADOWS } from '../constants/Theme';
 import { getHistory, deleteHistoryItem, updateFileExists, clearHistory } from '../services/db';
+import { shareMediaFile } from '../utils/shareFile';
 
 export default function HistoryScreen({ navigation }) {
   const isFocused = useIsFocused();
@@ -68,7 +70,7 @@ export default function HistoryScreen({ navigation }) {
 
   const handlePlay = (item) => {
     if (!item.file_exists) {
-      Alert.alert(
+      showAlert(
         'File Deleted', 
         'The file has been deleted or moved from your device.'
       );
@@ -79,7 +81,7 @@ export default function HistoryScreen({ navigation }) {
   };
 
   const handleDelete = (id) => {
-    Alert.alert(
+    showAlert(
       'Remove from History', 
       'Are you sure you want to remove this item from your history?', 
       [
@@ -98,7 +100,7 @@ export default function HistoryScreen({ navigation }) {
 
   const handleClearAll = () => {
     if (history.length === 0) return;
-    Alert.alert(
+    showAlert(
       'Clear All History',
       'Are you sure you want to clear your download history? Your saved files on device will not be deleted.',
       [
@@ -187,14 +189,26 @@ export default function HistoryScreen({ navigation }) {
             <Text style={styles.playBtnText}>Play</Text>
           </TouchableOpacity>
 
-          {/* Red trash delete button */}
-          <TouchableOpacity 
-            style={styles.deleteBtn} 
-            onPress={() => handleDelete(item.id)}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Trash2 color="#EF4444" size={18} />
-          </TouchableOpacity>
+          {/* Share downloaded file (video/audio with title) */}
+          <View style={styles.cardRightActions}>
+            <TouchableOpacity 
+              style={[styles.shareBtn, !item.file_exists && { opacity: 0.5 }]} 
+              onPress={() => item.file_exists && shareMediaFile(item.filepath, item.title)}
+              activeOpacity={0.8}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Share2 color={COLORS.primary} size={18} />
+            </TouchableOpacity>
+
+            {/* Red trash delete button */}
+            <TouchableOpacity 
+              style={styles.deleteBtn} 
+              onPress={() => handleDelete(item.id)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Trash2 color="#EF4444" size={18} />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
@@ -375,6 +389,21 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  shareBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 193, 7, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 193, 7, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
   },

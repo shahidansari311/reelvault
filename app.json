@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "dark",
-    "icon": "./assets/logo.png",
     "ios": {
       "supportsTablet": true
     },
@@ -124,7 +123,9 @@
             "backgroundColor": "#0F0F0F"
           }
         }
-      ]
+      ],
+      "expo-sharing",
+      "expo-image"
     ],
     "extra": {
       "eas": {

@@ -6,7 +6,6 @@ import {
   TouchableOpacity, 
   ActivityIndicator,
   Dimensions,
-  Alert,
   Modal,
   Image,
   FlatList,
@@ -15,6 +14,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Clipboard from 'expo-clipboard';
+import { showAlert } from '../utils/alert';
 import { useIsFocused } from '@react-navigation/native';
 import { 
   ArrowLeft, 
@@ -207,6 +207,23 @@ export default function StoryViewerScreen({ navigation, route }) {
   const fetchIdRef = React.useRef(0);
   const fetchIntervalRef = React.useRef(null);
 
+  // Real debounce: only the latest scheduled auto-fetch runs. User typing
+  // cancels any pending share-link fetch so it can't overwrite their input.
+  const scheduleAutoFetch = (value) => {
+    if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
+    debounceTimeoutRef.current = setTimeout(() => {
+      debounceTimeoutRef.current = null;
+      handleFetchWithTarget(value);
+    }, 500);
+  };
+
+  const cancelPendingAutoFetch = () => {
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+  };
+
   React.useEffect(() => {
     return () => {
       if (debounceTimeoutRef.current) clearTimeout(debounceTimeoutRef.current);
@@ -223,17 +240,17 @@ export default function StoryViewerScreen({ navigation, route }) {
         setUsername(parsed.username);
         setDetectedUsername(parsed.username);
         setSearchType('profile');
-        setTimeout(() => handleFetchWithTarget(parsed.username), 500);
+        scheduleAutoFetch(parsed.username);
       } else {
         setUsername(url);
         setSearchType('link');
-        setTimeout(() => handleFetchWithTarget(url), 500);
+        scheduleAutoFetch(url);
       }
     } else if (route?.params?.initialUsername) {
       setUsername(route.params.initialUsername);
       setDetectedUsername(route.params.initialUsername);
       setSearchType('profile');
-      setTimeout(() => handleFetchWithTarget(route.params.initialUsername), 500);
+      scheduleAutoFetch(route.params.initialUsername);
     }
   }, [route?.params?.initialUrl, route?.params?.initialUsername]);
 
@@ -284,9 +301,11 @@ export default function StoryViewerScreen({ navigation, route }) {
     
     target = target.replace('@', '').split('?')[0];
 
+    // Throttled fake progress: 1 update/sec (~900ms total) — the old 200ms
+    // setState storm was janky and destabilized the visible input/keyboard.
     fetchIntervalRef.current = setInterval(() => {
-      setFetchProgress(prev => (prev < 0.9 ? prev + 0.02 : prev));
-    }, 200);
+      setFetchProgress(prev => (prev < 0.9 ? prev + 0.1 : prev));
+    }, 1000);
 
     try {
       let results = [];
@@ -314,7 +333,10 @@ export default function StoryViewerScreen({ navigation, route }) {
         fetchIntervalRef.current = null;
       }
 
+      // Smooth settle to 100% then clear — no flicker of the bar.
+      Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
       setFetchProgress(1);
+      setTimeout(() => setFetchProgress(0), 250);
       if (currentFetchId !== fetchIdRef.current) return;
       setStories(results);
       setLoading(false);
@@ -376,7 +398,7 @@ export default function StoryViewerScreen({ navigation, route }) {
     );
     setDownloading(false);
     setDownloadProgress(null);
-    if (result.success) Alert.alert('Saved!', 'Media saved to your gallery.');
+    if (result.success) showAlert('Saved!', 'Media saved to your gallery.');
   };
 
   const handlePaste = async () => {
@@ -434,6 +456,7 @@ export default function StoryViewerScreen({ navigation, route }) {
           placeholder={searchType === 'profile' ? "Enter username (e.g. cristiano)" : "Paste story link"}
           value={username}
           onChangeText={(text) => {
+            cancelPendingAutoFetch();
             setUsername(text);
             setError(null);
             if (text.includes('instagram.com') || text.includes('http')) {
@@ -447,6 +470,7 @@ export default function StoryViewerScreen({ navigation, route }) {
             }
           }}
           onClear={() => {
+            cancelPendingAutoFetch();
             setUsername('');
             setError(null);
             setStories([]);

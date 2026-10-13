@@ -79,32 +79,6 @@ class NativeDownloadModule(private val reactContext: ReactApplicationContext) : 
     }
 
     /**
-     * Legacy overload — keeps backward compatibility with existing calls
-     * that only pass (url, fileName, title) without mimeType/subDir/promise.
-     */
-    @ReactMethod
-    fun startDownload(url: String, fileName: String, title: String) {
-        try {
-            val request = DownloadManager.Request(Uri.parse(url)).apply {
-                setTitle(title)
-                setDescription("Downloading via SaveX...")
-                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                setAllowedNetworkTypes(
-                    DownloadManager.Request.NETWORK_WIFI or DownloadManager.Request.NETWORK_MOBILE
-                )
-                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "SaveX/$fileName")
-            }
-            val downloadId = downloadManager.enqueue(request)
-            activeDownloads[downloadId] = fileName
-            registerCompletionReceiver(downloadId)
-            startProgressPolling()
-        } catch (e: Exception) {
-            // Fire-and-forget mode — log error silently
-            e.printStackTrace()
-        }
-    }
-
-    /**
      * Query the current status/progress of a download by its ID.
      */
     @ReactMethod
