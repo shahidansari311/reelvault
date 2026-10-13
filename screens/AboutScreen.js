@@ -21,6 +21,7 @@ import {
   Code,
   Globe,
   AtSign,
+  Mail,
   Send,
   Heart,
   Star,

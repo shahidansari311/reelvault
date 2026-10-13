@@ -14,7 +14,7 @@ import * as Clipboard from 'expo-clipboard';
 import { showAlert } from '../utils/alert';
 import { shareMediaFile } from '../utils/shareFile';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import { 
   ArrowLeft,
   Download, 
@@ -25,6 +25,7 @@ import {
 } from 'lucide-react-native';
 import { COLORS, RADII, FONTS, SHADOWS } from '../constants/Theme';
 import { fetchReelData } from '../services/api';
+import { parseInstagramUrl } from '../utils/urlParser';
 import { startBackgroundDownload } from '../services/backgroundDownload';
 import { CustomInput } from '../components/CustomInput';
 import { ProgressBar } from '../components/ProgressBar';
@@ -126,7 +127,21 @@ export default function ReelDownloaderScreen({ navigation, route }) {
       autoFetchTimeoutRef.current = null;
     }
   };
+  // In-flight dedup: the same URL sometimes arrives from clipboard
+  // auto-fetch + share intent + manual tap at once — one backend hit only.
+  const fetchingUrlRef = React.useRef(null);
   useEffect(() => () => clearPendingAutoFetch(), []);
+
+  // Debounced auto-fetch: shared by clipboard auto-paste and share intents.
+  // handleFetchUrl is declared below; the timeout fires long after render,
+  // so the closure reference is safe.
+  const scheduleAutoFetch = (text) => {
+    clearPendingAutoFetch();
+    autoFetchTimeoutRef.current = setTimeout(() => {
+      autoFetchTimeoutRef.current = null;
+      handleFetchUrl(text);
+    }, 500);
+  };
 
   // Copy a reel link in Instagram, open the app → link is fetched straight away.
   useFocusEffect(
@@ -181,6 +196,41 @@ export default function ReelDownloaderScreen({ navigation, route }) {
 
   const handleFetchUrl = async (urlToFetch) => {
     if (!urlToFetch) return;
+    const trimmed = urlToFetch.trim();
+    // Drop duplicate in-flight requests for the same URL (clipboard
+    // auto-fetch + share intent + tap can all fire together).
+    if (fetchingUrlRef.current === trimmed) return;
+    fetchingUrlRef.current = trimmed;
+
+    // Profile / story / unknown links contain no downloadable reel — reroute
+    // instead of burning all backend extraction methods into a 503.
+    const parsed = parseInstagramUrl(trimmed);
+    if (parsed?.type === 'profile' && parsed.username) {
+      fetchingUrlRef.current = null;
+      showAlert(
+        'Profile Link',
+        `This is @${parsed.username}'s profile, not a reel. Want to view their stories instead?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'View Stories',
+            onPress: () => navigation.navigate('Stories', { initialUsername: parsed.username }),
+          },
+        ]
+      );
+      return;
+    }
+    if (parsed?.type === 'story') {
+      fetchingUrlRef.current = null;
+      navigation.navigate('Stories', { initialUrl: trimmed });
+      return;
+    }
+    if (parsed && parsed.type === 'unknown') {
+      fetchingUrlRef.current = null;
+      showAlert('Wrong Link', "That doesn't look like a reel or post link. Open a reel in Instagram, tap Share → Copy Link, then paste it here.");
+      return;
+    }
+
     Keyboard.dismiss();
     setLoading(true);
     setFetchProgress(0);
@@ -195,15 +245,17 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     }, 200);
 
     try {
-      const data = await fetchReelData(urlToFetch);
+      const data = await fetchReelData(trimmed);
       clearInterval(interval);
       setFetchProgress(1);
       setReelData(data);
-      saveToHistory({ ...data, date: new Date().toISOString(), originalUrl: urlToFetch });
+      saveToHistory({ ...data, date: new Date().toISOString(), originalUrl: trimmed });
       setLoading(false);
     } catch (err) {
       clearInterval(interval);
       handleFetchError(err);
+    } finally {
+      fetchingUrlRef.current = null;
     }
   };
 
@@ -250,7 +302,10 @@ export default function ReelDownloaderScreen({ navigation, route }) {
     let errorTitle = serverData?.error || 'Something Went Wrong';
     let errorMsg = serverData?.message || err.message || 'We couldn\'t get this video. Please check the link and try again.';
 
-    if (status === 403) {
+    if (status === 401) {
+      errorTitle = serverData?.error || 'Session Expired';
+      errorMsg = serverData?.message || 'Instagram session expired on our server. Please wait a bit and try again.';
+    } else if (status === 403) {
       errorTitle = serverData?.error || 'This Account is Private';
       errorMsg = serverData?.message || 'This Reel belongs to a private account. We can only download from public accounts.';
     } else if (status === 404) {

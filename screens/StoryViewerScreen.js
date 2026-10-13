@@ -334,7 +334,6 @@ export default function StoryViewerScreen({ navigation, route }) {
       }
 
       // Smooth settle to 100% then clear — no flicker of the bar.
-      Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
       setFetchProgress(1);
       setTimeout(() => setFetchProgress(0), 250);
       if (currentFetchId !== fetchIdRef.current) return;
@@ -355,7 +354,10 @@ export default function StoryViewerScreen({ navigation, route }) {
       let title = serverData?.error || 'Something Went Wrong';
       let message = serverData?.message || err.message || "We couldn't get stories for this user. Please try again.";
 
-      if (status === 403) {
+      if (status === 401) {
+        title = serverData?.error || 'Session Expired';
+        message = serverData?.message || 'Instagram session expired on our server. Please wait a bit and try again.';
+      } else if (status === 403) {
         title = serverData?.error || 'This Account is Private';
         message = serverData?.message || 'This is a private account. You can only view stories from public accounts.';
       } else if (status === 404) {
@@ -558,7 +560,10 @@ export default function StoryViewerScreen({ navigation, route }) {
         keyExtractor={(item, index) => `${index}-${item.url}`}
         numColumns={2}
         columnWrapperStyle={styles.columnWrapper}
-        ListHeaderComponent={renderHeader}
+        // NOTE: call renderHeader() — passing the function itself as
+        // ListHeaderComponent would remount the whole header (including the
+        // TextInput) on every keystroke and dismiss the keyboard each time.
+        ListHeaderComponent={renderHeader()}
         renderItem={({ item, index }) => (
           <StoryItem 
             item={item} 

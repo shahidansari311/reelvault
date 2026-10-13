@@ -70,7 +70,8 @@ export const fetchReelData = async (reelUrl) => {
     const status = error.response?.status;
     const err = new Error(
       serverError?.message ||
-      (status === 403 ? 'This Reel belongs to a private account. We can only download from public accounts.' :
+      (status === 401 ? 'Instagram session expired on our server. Please wait a bit and try again.' :
+       status === 403 ? 'This Reel belongs to a private account. We can only download from public accounts.' :
        status === 404 ? 'This Reel was not found. It may have been deleted or the link is wrong.' :
        status === 429 ? 'Instagram is limiting our access right now. Please wait a minute and try again.' :
        status === 504 ? 'The request took too long. Please try again.' :
@@ -101,7 +102,8 @@ export const fetchPostData = async (postUrl) => {
     const status = error.response?.status;
     const err = new Error(
       serverError?.message ||
-      (status === 403 ? 'This post belongs to a private account. We can only download from public accounts.' :
+      (status === 401 ? 'Instagram session expired on our server. Please wait a bit and try again.' :
+       status === 403 ? 'This post belongs to a private account. We can only download from public accounts.' :
        status === 404 ? 'This post was not found. It may have been deleted or the link is wrong.' :
        status === 429 ? 'Instagram is limiting our access right now. Please wait a minute and try again.' :
        status === 504 ? 'The request took too long. Please try again.' :
@@ -133,7 +135,8 @@ export const fetchStories = async (username) => {
     const status = error.response?.status;
     const err = new Error(
       serverError?.message ||
-      (status === 403 ? 'This is a private account. You can only view stories from public accounts.' :
+      (status === 401 ? 'Instagram session expired on our server. Please wait a bit and try again.' :
+       status === 403 ? 'This is a private account. You can only view stories from public accounts.' :
        status === 404 ? 'No stories found for this user. They may not have posted any recently.' :
        status === 429 ? 'Instagram is limiting our access right now. Please wait a minute and try again.' :
        status === 504 ? 'The request took too long. Please try again.' :

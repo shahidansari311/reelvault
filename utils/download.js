@@ -321,8 +321,11 @@ async function startExpoDownload(url, fileName, onProgress, meta) {
     console.warn('Could not move to SaveX album, but file is saved.', albumErr);
     // Fallback: try creating asset directly from result if copy fails
     try {
-      if (finalUri === result.uri && MediaLibrary) {
-        await MediaLibrary.createAssetAsync(result.uri);
+      if (finalUri === result.uri) {
+        const MediaLibrary = getMediaLibrary();
+        if (MediaLibrary) {
+          await MediaLibrary.createAssetAsync(result.uri);
+        }
       }
     } catch(e) {
       console.warn('Fallback asset creation failed', e);

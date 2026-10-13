@@ -66,6 +66,10 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
   // Tracked auto-fetch timer: cleared on unmount and when the user types,
   // so a stale share-link fetch can't leak or overwrite manual input.
   const autoFetchTimeoutRef = React.useRef(null);
+  // Client-side 429 cooldown: after YouTube rate-limits us, every retry
+  // (auto + manual) just extends the server's IP ban — block refetch until
+  // the window passes instead.
+  const rateLimitedUntilRef = React.useRef(0);
   const clearPendingAutoFetch = () => {
     if (autoFetchTimeoutRef.current) {
       clearTimeout(autoFetchTimeoutRef.current);
@@ -110,6 +114,13 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
       showAlert('Wrong Link', "That doesn't look like a YouTube link. Please paste a link from youtube.com or youtu.be.");
       return;
     }
+    // Respect the post-429 cooldown — hammering retries extends the ban.
+    const waitMs = rateLimitedUntilRef.current - Date.now();
+    if (waitMs > 0) {
+      const secs = Math.ceil(waitMs / 1000);
+      showAlert('Slow Down', `YouTube limited our server. Please wait ~${secs}s before trying again — retrying early only extends the block.`);
+      return;
+    }
     Keyboard.dismiss();
     setYtLoading(true);
     setYtError(null);
@@ -141,6 +152,9 @@ export default function YouTubeDownloaderScreen({ navigation, route }) {
       } else if (status === 429) {
         title = serverData?.error || 'YouTube is Busy';
         message = serverData?.message || 'YouTube is limiting our access right now. We retried automatically a few times — please wait a minute and try again.';
+        // Start a 90s client-side cooldown so further taps/retries
+        // don't extend the server's IP ban.
+        rateLimitedUntilRef.current = Date.now() + 90000;
       } else if (status === 503) {
         title = serverData?.error || 'Could Not Load Video';
         message = serverData?.message || "We're having trouble reaching YouTube right now. Please try again in a moment.";

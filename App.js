@@ -1,7 +1,14 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { NavigationContainer, DarkTheme, useNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text, Pressable, Animated, StyleSheet, Keyboard, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Keyboard, Platform } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  interpolateColor,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LayoutGrid, Video, Play, Eye } from 'lucide-react-native';
@@ -58,27 +65,34 @@ const PILL_HEIGHT = 46;
 const ICON_SIZE = 22;
 
 function TabItem({ focused, label, Icon, onPress, onLongPress, accessibilityLabel }) {
-  const progress = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  // UI-thread animation (Reanimated): keeps playing even while the newly
+  // focused screen mounts and blocks the JS thread — the old
+  // useNativeDriver:false flex/width animation froze and looked "jumped".
+  const progress = useSharedValue(focused ? 1 : 0);
 
   useEffect(() => {
-    Animated.spring(progress, {
-      toValue: focused ? 1 : 0,
-      useNativeDriver: false, // animating flex/width, so no native driver
-      friction: 9,
-      tension: 80,
-    }).start();
+    progress.value = focused
+      ? withSpring(1, { damping: 16, stiffness: 180 })
+      : withTiming(0, { duration: 200 });
   }, [focused, progress]);
 
-  const flex = progress.interpolate({ inputRange: [0, 1], outputRange: [1, 2.3] });
-  const bg = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['rgba(255,255,255,0)', COLORS.primary],
-  });
-  const labelOpacity = progress.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0, 1] });
-  const labelWidth = progress.interpolate({ inputRange: [0, 1], outputRange: [0, 62] });
+  const wrapStyle = useAnimatedStyle(() => ({
+    flex: 1 + progress.value * 1.3,
+  }));
+  const pillStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      progress.value,
+      [0, 1],
+      ['rgba(255,193,7,0)', '#FFC107']
+    ),
+  }));
+  const labelStyle = useAnimatedStyle(() => ({
+    width: progress.value * 62,
+    opacity: progress.value < 0.6 ? 0 : (progress.value - 0.6) / 0.4,
+  }));
 
   return (
-    <Animated.View style={[tabStyles.itemWrap, { flex }]}>
+    <Animated.View style={[tabStyles.itemWrap, wrapStyle]}>
       <Pressable
         onPress={onPress}
         onLongPress={onLongPress}
@@ -88,13 +102,13 @@ function TabItem({ focused, label, Icon, onPress, onLongPress, accessibilityLabe
         android_ripple={{ color: 'rgba(255,255,255,0.08)', borderless: true, radius: 30 }}
         style={tabStyles.pressable}
       >
-        <Animated.View style={[tabStyles.pill, { backgroundColor: bg }]}>
+        <Animated.View style={[tabStyles.pill, pillStyle]}>
           <Icon
             size={ICON_SIZE}
             color={focused ? '#000' : COLORS.textSecondary}
             strokeWidth={focused ? 2.5 : 2}
           />
-          <Animated.View style={{ width: labelWidth, opacity: labelOpacity, overflow: 'hidden' }}>
+          <Animated.View style={[labelStyle, { overflow: 'hidden' }]}>
             <Text numberOfLines={1} style={tabStyles.label}>
               {label}
             </Text>

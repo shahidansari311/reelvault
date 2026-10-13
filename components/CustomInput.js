@@ -15,8 +15,8 @@ export const CustomInput = ({ placeholder, value, onChangeText, onClear, icon: I
         placeholderTextColor={COLORS.textMuted}
         value={value}
         onChangeText={onChangeText}
-        onFocus={handleFocus}
-        onBlur={handleBlur}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         autoCapitalize="none"
         autoCorrect={false}
       />
